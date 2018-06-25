@@ -36,10 +36,11 @@ typedef enum
 	STATUS_NAME,
 	STATUS_ROLE,
 	STATUS_PID,
-	STATUS_RUNNING
+	STATUS_RUNNING,
+	STATUS_PAUSED
 }			StatusHeader;
 
-#define STATUS_HEADER_COUNT 5
+#define STATUS_HEADER_COUNT 6
 
 struct ColHeader headers_status[STATUS_HEADER_COUNT];
 
@@ -48,6 +49,7 @@ typedef struct RepmgrdInfo {
 	char pid_text[MAXLEN];
 	char pid_file[MAXLEN];
 	bool running;
+	bool paused;
 } RepmgrdInfo;
 
 void
@@ -92,6 +94,7 @@ do_daemon_status(void)
 	strncpy(headers_status[STATUS_ROLE].title, _("Role"), MAXLEN);
 	strncpy(headers_status[STATUS_PID].title, _("PID"), MAXLEN);
 	strncpy(headers_status[STATUS_RUNNING].title, _("Running?"), MAXLEN);
+	strncpy(headers_status[STATUS_PAUSED].title, _("Paused?"), MAXLEN);
 
 	for (i = 0; i < STATUS_HEADER_COUNT; i++)
 	{
@@ -107,6 +110,7 @@ do_daemon_status(void)
 		repmgrd_info[i] = pg_malloc0(sizeof(RepmgrdInfo));
 		repmgrd_info[i]->pid = UNKNOWN_PID;
 		repmgrd_info[i]->running = false;
+		repmgrd_info[i]->paused = false;
 
 		cell->node_info->conn = establish_db_connection_quiet(cell->node_info->conninfo);
 
@@ -129,6 +133,7 @@ do_daemon_status(void)
 			}
 
 			repmgrd_info[i]->running = repmgrd_is_running(cell->node_info->conn);
+			repmgrd_info[i]->paused = repmgrd_is_paused(cell->node_info->conn);
 		}
 		PQfinish(cell->node_info->conn);
 
@@ -168,6 +173,7 @@ do_daemon_status(void)
 			printf("| %-*s ", headers_status[STATUS_ROLE].max_length, get_node_type_string(cell->node_info->type));
 			printf("| %-*s ", headers_status[STATUS_PID].max_length, repmgrd_info[i]->pid_text);
 			printf("| %-*s ", headers_status[STATUS_RUNNING].max_length, repmgrd_info[i]->running ? "yes" : "no");
+			printf("| %-*s ", headers_status[STATUS_PAUSED].max_length, repmgrd_info[i]->paused ? "yes" : "no");
 		}
 		printf("\n");
 

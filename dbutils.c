@@ -1762,6 +1762,30 @@ repmgrd_is_running(PGconn *conn)
 }
 
 
+bool
+repmgrd_is_paused(PGconn *conn)
+{
+	PGresult   *res = NULL;
+	bool		is_paused = false;
+
+	res = PQexec(conn, "SELECT repmgr.repmgrd_is_paused()");
+
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		log_error(_("unable to execute \"SELECT repmgr.repmgrd_is_paused()\""));
+		log_detail("%s", PQerrorMessage(conn));
+	}
+	else if (!PQgetisnull(res, 0, 0))
+	{
+		is_paused = atobool(PQgetvalue(res, 0, 0));
+	}
+
+	PQclear(res);
+
+	return is_paused;
+}
+
+
 /* ================ */
 /* result functions */
 /* ================ */

@@ -797,28 +797,38 @@ monitor_streaming_standby(void)
 					goto loop;
 				}
 
+
 				/* still down after reconnect attempt(s) */
 				if (upstream_node_info.node_status == NODE_STATUS_DOWN)
 				{
 					bool		failover_done = false;
 
-					if (upstream_node_info.type == PRIMARY)
+					if (PQstatus(local_conn) == CONNECTION_OK && repmgrd_is_paused(local_conn))
 					{
-						failover_done = do_primary_failover();
+						log_notice("node is paused");
+						monitoring_state = MS_DEGRADED;
+						INSTR_TIME_SET_CURRENT(degraded_monitoring_start);
 					}
-					else if (upstream_node_info.type == STANDBY)
+					else
 					{
-						failover_done = do_upstream_standby_failover();
-					}
+						if (upstream_node_info.type == PRIMARY)
+						{
+							failover_done = do_primary_failover();
+						}
+						else if (upstream_node_info.type == STANDBY)
+						{
+							failover_done = do_upstream_standby_failover();
+						}
 
-					/*
-					 * XXX it's possible it will make sense to return in all
-					 * cases to restart monitoring
-					 */
-					if (failover_done == true)
-					{
-						primary_node_id = get_primary_node_id(local_conn);
-						return;
+						/*
+						 * XXX it's possible it will make sense to return in all
+						 * cases to restart monitoring
+						 */
+						if (failover_done == true)
+						{
+							primary_node_id = get_primary_node_id(local_conn);
+							return;
+						}
 					}
 				}
 			}

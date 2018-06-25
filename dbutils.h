@@ -402,6 +402,7 @@ BackupState	server_in_exclusive_backup_mode(PGconn *conn);
 void		repmgrd_set_pid(PGconn *conn, pid_t repmgrd_pid, const char *pidfile);
 pid_t		repmgrd_get_pid(PGconn *conn);
 bool		repmgrd_is_running(PGconn *conn);
+bool		repmgrd_is_paused(PGconn *conn);
 
 /* extension functions */
 ExtensionStatus get_repmgr_extension_status(PGconn *conn);
