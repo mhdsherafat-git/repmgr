@@ -1718,7 +1718,7 @@ pid_t
 repmgrd_get_pid(PGconn *conn)
 {
 	PGresult   *res = NULL;
-	pid_t repmgrd_pid = UNKNOWN_PID;
+	pid_t		repmgrd_pid = UNKNOWN_PID;
 
 	res = PQexec(conn, "SELECT repmgr.get_repmgrd_pid()");
 
@@ -1735,6 +1735,30 @@ repmgrd_get_pid(PGconn *conn)
 	PQclear(res);
 
 	return repmgrd_pid;
+}
+
+
+bool
+repmgrd_is_running(PGconn *conn)
+{
+	PGresult   *res = NULL;
+	bool		is_running = false;
+
+	res = PQexec(conn, "SELECT repmgr.repmgrd_is_running()");
+
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		log_error(_("unable to execute \"SELECT repmgr.repmgrd_is_running()\""));
+		log_detail("%s", PQerrorMessage(conn));
+	}
+	else if (!PQgetisnull(res, 0, 0))
+	{
+		is_running = atobool(PQgetvalue(res, 0, 0));
+	}
+
+	PQclear(res);
+
+	return is_running;
 }
 
 

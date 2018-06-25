@@ -26,7 +26,59 @@
 void
 do_daemon_status(void)
 {
-	puts("boo!");
+	PGconn	   *conn = NULL;
+	NodeInfoList nodes = T_NODE_INFO_LIST_INITIALIZER;
+	NodeInfoListCell *cell = NULL;
+	bool success;
+
+	/* Connect to local database to obtain cluster connection data */
+	log_verbose(LOG_INFO, _("connecting to database"));
+
+	if (strlen(config_file_options.conninfo))
+		conn = establish_db_connection(config_file_options.conninfo, true);
+	else
+		conn = establish_db_connection_by_params(&source_conninfo, true);
+
+	success = get_all_node_records_with_upstream(conn, &nodes);
+
+	if (success == false)
+	{
+		/* get_all_node_records_with_upstream() will print error message */
+		PQfinish(conn);
+		exit(ERR_BAD_CONFIG);
+	}
+
+	if (nodes.node_count == 0)
+	{
+		log_error(_("no node records were found"));
+		log_hint(_("ensure at least one node is registered"));
+		PQfinish(conn);
+		exit(ERR_BAD_CONFIG);
+	}
+
+	for (cell = nodes.head; cell; cell = cell->next)
+	{
+		bool is_running = false;
+		int pid = UNKNOWN_PID;
+
+		cell->node_info->conn = establish_db_connection_quiet(cell->node_info->conninfo);
+
+		if (PQstatus(cell->node_info->conn) != CONNECTION_OK)
+		{
+			printf("unable to connect to node %i\n", cell->node_info->node_id);
+		}
+		else
+		{
+			is_running = repmgrd_is_running(cell->node_info->conn);
+			pid = repmgrd_get_pid(cell->node_info->conn);
+
+			printf("node %i: %s %i\n",
+				   cell->node_info->node_id,
+				   is_running ? "running" : "not running",
+				   pid);
+		}
+		PQfinish(cell->node_info->conn);
+	}
 }
 
 
