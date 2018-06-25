@@ -23,6 +23,33 @@
 #include "repmgr-client-global.h"
 #include "repmgr-action-daemon.h"
 
+
+
+
+// repmgrd start time?
+// repmgrd mode
+// priority
+
+typedef enum
+{
+	STATUS_ID = 0,
+	STATUS_NAME,
+	STATUS_ROLE,
+	STATUS_PID,
+	STATUS_RUNNING
+}			StatusHeader;
+
+#define STATUS_HEADER_COUNT 5
+
+struct ColHeader headers_status[STATUS_HEADER_COUNT];
+
+typedef struct RepmgrdInfo {
+	int pid;
+	char pid_text[MAXLEN];
+	char pid_file[MAXLEN];
+	bool running;
+} RepmgrdInfo;
+
 void
 do_daemon_status(void)
 {
@@ -30,6 +57,8 @@ do_daemon_status(void)
 	NodeInfoList nodes = T_NODE_INFO_LIST_INITIALIZER;
 	NodeInfoListCell *cell = NULL;
 	bool success;
+	int i;
+	RepmgrdInfo **repmgrd_info;
 
 	/* Connect to local database to obtain cluster connection data */
 	log_verbose(LOG_INFO, _("connecting to database"));
@@ -56,12 +85,31 @@ do_daemon_status(void)
 		exit(ERR_BAD_CONFIG);
 	}
 
+	repmgrd_info = (RepmgrdInfo **) pg_malloc0(sizeof(RepmgrdInfo *) * nodes.node_count);
+
+	strncpy(headers_status[STATUS_ID].title, _("ID"), MAXLEN);
+	strncpy(headers_status[STATUS_NAME].title, _("Name"), MAXLEN);
+	strncpy(headers_status[STATUS_ROLE].title, _("Role"), MAXLEN);
+	strncpy(headers_status[STATUS_PID].title, _("PID"), MAXLEN);
+	strncpy(headers_status[STATUS_RUNNING].title, _("Running?"), MAXLEN);
+
+	for (i = 0; i < STATUS_HEADER_COUNT; i++)
+	{
+		headers_status[i].max_length = strlen(headers_status[i].title);
+	}
+
+	i = 0;
+
 	for (cell = nodes.head; cell; cell = cell->next)
 	{
-		bool is_running = false;
-		int pid = UNKNOWN_PID;
+		int j;
+
+		repmgrd_info[i] = pg_malloc0(sizeof(RepmgrdInfo));
+		repmgrd_info[i]->pid = UNKNOWN_PID;
+		repmgrd_info[i]->running = false;
 
 		cell->node_info->conn = establish_db_connection_quiet(cell->node_info->conninfo);
+
 
 		if (PQstatus(cell->node_info->conn) != CONNECTION_OK)
 		{
@@ -69,16 +117,64 @@ do_daemon_status(void)
 		}
 		else
 		{
-			is_running = repmgrd_is_running(cell->node_info->conn);
-			pid = repmgrd_get_pid(cell->node_info->conn);
+			repmgrd_info[i]->pid = repmgrd_get_pid(cell->node_info->conn);
 
-			printf("node %i: %s %i\n",
-				   cell->node_info->node_id,
-				   is_running ? "running" : "not running",
-				   pid);
+			if (repmgrd_info[i]->pid == UNKNOWN_PID)
+			{
+				maxlen_snprintf(repmgrd_info[i]->pid_text, "%s", _("n/a"));
+			}
+			else
+			{
+				maxlen_snprintf(repmgrd_info[i]->pid_text, "%i", repmgrd_info[i]->pid);
+			}
+
+			repmgrd_info[i]->running = repmgrd_is_running(cell->node_info->conn);
 		}
 		PQfinish(cell->node_info->conn);
+
+		headers_status[STATUS_NAME].cur_length = strlen(cell->node_info->node_name);
+		headers_status[STATUS_ROLE].cur_length = strlen(get_node_type_string(cell->node_info->type));
+		headers_status[STATUS_PID].cur_length = strlen(repmgrd_info[i]->pid_text);
+
+		for (j = 0; j < STATUS_HEADER_COUNT; j++)
+		{
+			if (headers_status[j].cur_length > headers_status[j].max_length)
+			{
+				headers_status[j].max_length = headers_status[j].cur_length;
+			}
+		}
+
+		i++;
 	}
+
+	/* Print column header row (text mode only) */
+	if (runtime_options.output_mode == OM_TEXT)
+	{
+		print_status_header(STATUS_HEADER_COUNT, headers_status);
+	}
+
+	i = 0;
+
+	for (cell = nodes.head; cell; cell = cell->next)
+	{
+		if (runtime_options.output_mode == OM_CSV)
+		{
+			// XXX implement
+		}
+		else
+		{
+			printf(" %-*i ",  headers_status[STATUS_ID].max_length, cell->node_info->node_id);
+			printf("| %-*s ", headers_status[STATUS_NAME].max_length, cell->node_info->node_name);
+			printf("| %-*s ", headers_status[STATUS_ROLE].max_length, get_node_type_string(cell->node_info->type));
+			printf("| %-*s ", headers_status[STATUS_PID].max_length, repmgrd_info[i]->pid_text);
+			printf("| %-*s ", headers_status[STATUS_RUNNING].max_length, repmgrd_info[i]->running ? "yes" : "no");
+		}
+		printf("\n");
+
+		i++;
+	}
+
+	free(repmgrd_info);
 }
 
 

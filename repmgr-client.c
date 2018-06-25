@@ -1898,6 +1898,42 @@ print_error_list(ItemList *error_list, int log_level)
 
 
 void
+print_status_header(int cols, ColHeader *headers)
+{
+	int i;
+
+	for (i = 0; i < cols; i++)
+	{
+		if (i == 0)
+			printf(" ");
+		else
+			printf(" | ");
+
+		printf("%-*s",
+			   headers[i].max_length,
+			   headers[i].title);
+	}
+	printf("\n");
+	printf("-");
+
+	for (i = 0; i < cols; i++)
+	{
+		int			j;
+
+		for (j = 0; j < headers[i].max_length; j++)
+			printf("-");
+
+		if (i < (cols - 1))
+			printf("-+-");
+		else
+			printf("-");
+	}
+
+	printf("\n");
+}
+
+
+void
 print_help_header(void)
 {
 	printf(_("%s: replication management tool for PostgreSQL\n"), progname());
