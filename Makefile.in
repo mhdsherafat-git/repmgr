@@ -17,7 +17,6 @@ DATA = \
   repmgr--4.1--4.2.sql \
   repmgr--4.2.sql
 
-
 REGRESS = repmgr_extension
 
 # Hacky workaround to install the binaries

@@ -488,6 +488,9 @@ main(int argc, char **argv)
 		check_and_create_pid_file(pid_file);
 	}
 
+	repmgrd_set_pid(local_conn, getpid(), pid_file);
+
+
 #ifndef WIN32
 	setup_event_handlers();
 #endif
@@ -901,6 +904,9 @@ print_monitoring_state(MonitoringState monitoring_state)
 void
 terminate(int retval)
 {
+	if (PQstatus(local_conn)  == CONNECTION_OK)
+		repmgrd_set_pid(local_conn, UNKNOWN_PID, NULL);
+
 	logger_shutdown();
 
 	if (pid_file[0] != '\0')

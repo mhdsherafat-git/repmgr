@@ -106,12 +106,13 @@ handle_sigint_physical(SIGNAL_ARGS)
 	else
 		writeable_conn = primary_conn;
 
-	create_event_notification(writeable_conn,
-							  &config_file_options,
-							  config_file_options.node_id,
-							  "repmgrd_shutdown",
-							  true,
-							  event_details.data);
+	if (PQstatus(writeable_conn) == CONNECTION_OK)
+		create_event_notification(writeable_conn,
+								  &config_file_options,
+								  config_file_options.node_id,
+								  "repmgrd_shutdown",
+								  true,
+								  event_details.data);
 
 	termPQExpBuffer(&event_details);
 
@@ -145,7 +146,6 @@ do_physical_node_check(void)
 			case FAILOVER_AUTOMATIC:
 				log_error(_("this node is marked as inactive and cannot be used as a failover target"));
 				log_hint(_("%s"), hint);
-				close_connection(&local_conn);
 
 				create_event_notification(NULL,
 										  &config_file_options,
@@ -206,8 +206,7 @@ do_physical_node_check(void)
 		if (required_param_missing == true)
 		{
 			log_hint(_("add the missing configuration parameter(s) and start repmgrd again"));
-			close_connection(&local_conn);
-			exit(ERR_BAD_CONFIG);
+			terminate(ERR_BAD_CONFIG);
 		}
 	}
 }
@@ -606,8 +605,7 @@ monitor_streaming_standby(void)
 		if (local_node_info.upstream_node_id == NODE_NOT_FOUND)
 		{
 			log_error(_("unable to determine an active primary for this cluster, terminating"));
-			close_connection(&local_conn);
-			exit(ERR_BAD_CONFIG);
+			terminate(ERR_BAD_CONFIG);
 		}
 	}
 
@@ -623,15 +621,15 @@ monitor_streaming_standby(void)
 		log_error(_("no record found for upstream node (ID: %i), terminating"),
 				  local_node_info.upstream_node_id);
 		log_hint(_("ensure the upstream node is registered correctly"));
-		close_connection(&local_conn);
-		exit(ERR_DB_CONN);
+
+		terminate(ERR_DB_CONN);
 	}
 	else if (record_status == RECORD_ERROR)
 	{
 		log_error(_("unable to retrieve record for upstream node (ID: %i), terminating"),
 				  local_node_info.upstream_node_id);
-		close_connection(&local_conn);
-		exit(ERR_DB_CONN);
+
+		terminate(ERR_DB_CONN);
 	}
 
 	log_debug("connecting to upstream node %i: \"%s\"", upstream_node_info.node_id, upstream_node_info.conninfo);
@@ -650,8 +648,7 @@ monitor_streaming_standby(void)
 				  local_node_info.upstream_node_id);
 		log_hint(_("upstream node must be running before repmgrd can start"));
 
-		close_connection(&local_conn);
-		exit(ERR_DB_CONN);
+		terminate(ERR_DB_CONN);
 	}
 
 	/*
@@ -673,7 +670,8 @@ monitor_streaming_standby(void)
 		{
 			log_error(_("unable to connect to primary node"));
 			log_hint(_("ensure the primary node is reachable from this node"));
-			exit(ERR_DB_CONN);
+
+			terminate(ERR_DB_CONN);
 		}
 
 		log_verbose(LOG_DEBUG, "connected to primary");
@@ -1231,7 +1229,7 @@ monitor_streaming_witness(void)
 	/*
 	 * At this point we can't trust the local copy of "repmgr.nodes", as
 	 * it may not have been updated. We'll scan the cluster for the current
-[''	 * primary and refresh the copy from that before proceeding further.
+	 * primary and refresh the copy from that before proceeding further.
 	 */
 	primary_conn = get_primary_connection_quiet(local_conn, &primary_node_id, NULL);
 
@@ -1247,8 +1245,7 @@ monitor_streaming_witness(void)
 				  upstream_node_info.node_id);
 		log_hint(_("primary node must be running before repmgrd can start"));
 
-		close_connection(&local_conn);
-		exit(ERR_DB_CONN);
+		terminate(ERR_DB_CONN);
 	}
 
 	/* synchronise local copy of "repmgr.nodes", in case it was stale */

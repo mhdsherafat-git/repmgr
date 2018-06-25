@@ -49,6 +49,7 @@
 #include "voting.h"
 
 #define UNKNOWN_NODE_ID		-1
+#define UNKNOWN_PID			-1
 
 #define TRANCHE_NAME "repmgrd"
 
@@ -66,6 +67,8 @@ typedef struct repmgrdSharedState
 	LWLockId	lock;			/* protects search/modification */
 	TimestampTz last_updated;
 	int			local_node_id;
+	int			repmgrd_pid;
+	char		repmgrd_pidfile[MAXPGPATH];
 	/* streaming failover */
 	NodeVotingStatus voting_status;
 	int			current_electoral_term;
@@ -112,6 +115,17 @@ PG_FUNCTION_INFO_V1(am_bdr_failover_handler);
 Datum		unset_bdr_failover_handler(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1(unset_bdr_failover_handler);
 
+Datum		set_repmgrd_pid(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1(set_repmgrd_pid);
+
+Datum		get_repmgrd_pid(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1(get_repmgrd_pid);
+
+Datum		get_repmgrd_pidfile(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1(get_repmgrd_pidfile);
+
+Datum		repmgrd_is_running(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1(repmgrd_is_running);
 
 /*
  * Module load callback
@@ -185,6 +199,8 @@ repmgr_shmem_startup(void)
 #endif
 
 		shared_state->local_node_id = UNKNOWN_NODE_ID;
+		shared_state->repmgrd_pid = UNKNOWN_PID;
+		memset(shared_state->repmgrd_pidfile, 0, MAXPGPATH);
 		shared_state->current_electoral_term = 0;
 		shared_state->voting_status = VS_NO_VOTE;
 		shared_state->candidate_node_id = UNKNOWN_NODE_ID;
@@ -421,4 +437,109 @@ unset_bdr_failover_handler(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_VOID();
+}
+
+
+/*
+ * Returns the repmgrd pid; or NULL if none set; or -1 if set but repmgrd
+ * process not running (TODO!)
+ */
+Datum
+get_repmgrd_pid(PG_FUNCTION_ARGS)
+{
+	int repmgrd_pid = UNKNOWN_PID;
+
+	LWLockAcquire(shared_state->lock, LW_SHARED);
+	repmgrd_pid = shared_state->repmgrd_pid;
+	LWLockRelease(shared_state->lock);
+
+	PG_RETURN_INT32(repmgrd_pid);
+}
+
+
+/*
+ * Returns the repmgrd pidfile
+ */
+Datum
+get_repmgrd_pidfile(PG_FUNCTION_ARGS)
+{
+	char repmgrd_pidfile[MAXPGPATH];
+
+	memset(repmgrd_pidfile, 0, MAXPGPATH);
+
+	LWLockAcquire(shared_state->lock, LW_SHARED);
+	strncpy(repmgrd_pidfile, shared_state->repmgrd_pidfile, MAXPGPATH);
+	LWLockRelease(shared_state->lock);
+
+	if (repmgrd_pidfile[0] == '\0')
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(cstring_to_text(repmgrd_pidfile));
+}
+
+Datum
+set_repmgrd_pid(PG_FUNCTION_ARGS)
+{
+	int repmgrd_pid = UNKNOWN_PID;
+	char *repmgrd_pidfile = NULL;
+
+	if (!shared_state)
+		PG_RETURN_VOID();
+
+	if (PG_ARGISNULL(0))
+	{
+		repmgrd_pid = UNKNOWN_PID;
+	}
+	else
+	{
+		repmgrd_pid = PG_GETARG_INT32(0);
+	}
+
+	elog(DEBUG3, "set_repmgrd_pid(): provided pid is %i", repmgrd_pid);
+
+	if (repmgrd_pid != UNKNOWN_PID && !PG_ARGISNULL(1))
+	{
+		repmgrd_pidfile = text_to_cstring(PG_GETARG_TEXT_PP(1));
+		elog(INFO, "set_repmgrd_pid(): provided pidfile is %s", repmgrd_pidfile);
+	}
+
+	LWLockAcquire(shared_state->lock, LW_EXCLUSIVE);
+
+	shared_state->repmgrd_pid = repmgrd_pid;
+	memset(shared_state->repmgrd_pidfile, 0, MAXPGPATH);
+
+	if(repmgrd_pidfile != NULL)
+	{
+		strncpy(shared_state->repmgrd_pidfile, repmgrd_pidfile, MAXPGPATH);
+	}
+
+	LWLockRelease(shared_state->lock);
+	PG_RETURN_VOID();
+}
+
+
+Datum
+repmgrd_is_running(PG_FUNCTION_ARGS)
+{
+	int repmgrd_pid = UNKNOWN_PID;
+	int kill_ret;
+
+	LWLockAcquire(shared_state->lock, LW_SHARED);
+	repmgrd_pid = shared_state->repmgrd_pid;
+	LWLockRelease(shared_state->lock);
+
+	/* No PID registered - assume not running */
+	if (repmgrd_pid == UNKNOWN_PID)
+	{
+		PG_RETURN_BOOL(false);
+	}
+
+	kill_ret = kill(repmgrd_pid, 0);
+
+	if (kill_ret == 0)
+	{
+		PG_RETURN_BOOL(true);
+	}
+
+	PG_RETURN_BOOL(false);
 }
