@@ -45,6 +45,7 @@
 #define CLUSTER_MATRIX		   19
 #define CLUSTER_CROSSCHECK	   20
 #define CLUSTER_EVENT		   21
+#define DAEMON_STATUS		   22
 
 /* command line options without short versions */
 #define OPT_HELP						   1001

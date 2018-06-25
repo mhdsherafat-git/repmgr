@@ -30,9 +30,12 @@
  * NODE STATUS
  * NODE CHECK
  *
+ * DAEMON STATUS
+ *
  * For internal use:
  * NODE REJOIN
  * NODE SERVICE
+ *
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -62,6 +65,7 @@
 #include "repmgr-action-bdr.h"
 #include "repmgr-action-node.h"
 #include "repmgr-action-cluster.h"
+#include "repmgr-action-daemon.h"
 
 #include <storage/fd.h>			/* for PG_TEMP_FILE_PREFIX */
 
@@ -900,6 +904,17 @@ main(int argc, char **argv)
 			else if (strcasecmp(repmgr_action, "CLEANUP") == 0)
 				action = CLUSTER_CLEANUP;
 		}
+		else if (strcasecmp(repmgr_command, "DAEMON") == 0)
+		{
+			if (help_option == true)
+			{
+				do_daemon_help();
+				exit(SUCCESS);
+			}
+
+			if (strcasecmp(repmgr_action, "STATUS") == 0)
+				action = DAEMON_STATUS;
+		}
 		else
 		{
 			valid_repmgr_command_found = false;
@@ -1296,6 +1311,11 @@ main(int argc, char **argv)
 			break;
 		case CLUSTER_CLEANUP:
 			do_cluster_cleanup();
+			break;
+
+			/* DAEMON */
+		case DAEMON_STATUS:
+			do_daemon_status();
 			break;
 
 		default:
