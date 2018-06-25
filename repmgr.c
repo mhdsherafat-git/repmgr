@@ -69,6 +69,7 @@ typedef struct repmgrdSharedState
 	int			local_node_id;
 	int			repmgrd_pid;
 	char		repmgrd_pidfile[MAXPGPATH];
+	bool		repmgrd_paused;
 	/* streaming failover */
 	NodeVotingStatus voting_status;
 	int			current_electoral_term;
@@ -126,6 +127,14 @@ PG_FUNCTION_INFO_V1(get_repmgrd_pidfile);
 
 Datum		repmgrd_is_running(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1(repmgrd_is_running);
+
+Datum		repmgrd_pause(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1(repmgrd_pause);
+
+Datum		repmgrd_is_paused(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1(repmgrd_is_paused);
+
+
 
 /*
  * Module load callback
@@ -201,6 +210,7 @@ repmgr_shmem_startup(void)
 		shared_state->local_node_id = UNKNOWN_NODE_ID;
 		shared_state->repmgrd_pid = UNKNOWN_PID;
 		memset(shared_state->repmgrd_pidfile, 0, MAXPGPATH);
+		shared_state->repmgrd_paused = false;
 		shared_state->current_electoral_term = 0;
 		shared_state->voting_status = VS_NO_VOTE;
 		shared_state->candidate_node_id = UNKNOWN_NODE_ID;
@@ -542,4 +552,30 @@ repmgrd_is_running(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_BOOL(false);
+}
+
+
+Datum
+repmgrd_pause(PG_FUNCTION_ARGS)
+{
+	bool pause = PG_GETARG_BOOL(0);
+
+	LWLockAcquire(shared_state->lock, LW_EXCLUSIVE);
+	shared_state->repmgrd_paused = pause;
+	LWLockRelease(shared_state->lock);
+
+	PG_RETURN_VOID();
+}
+
+
+Datum
+repmgrd_is_paused(PG_FUNCTION_ARGS)
+{
+	bool is_paused;
+
+	LWLockAcquire(shared_state->lock, LW_SHARED);
+	is_paused = shared_state->repmgrd_paused;
+	LWLockRelease(shared_state->lock);
+
+	PG_RETURN_BOOL(is_paused);
 }
