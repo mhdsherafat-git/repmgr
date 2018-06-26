@@ -45,6 +45,7 @@ typedef enum
 struct ColHeader headers_status[STATUS_HEADER_COUNT];
 
 typedef struct RepmgrdInfo {
+	int node_id;
 	int pid;
 	char pid_text[MAXLEN];
 	char pid_file[MAXLEN];
@@ -52,15 +53,26 @@ typedef struct RepmgrdInfo {
 	bool paused;
 } RepmgrdInfo;
 
+
+static void fetch_node_records(PGconn *conn, NodeInfoList *node_list);
+
+
 void
 do_daemon_status(void)
 {
 	PGconn	   *conn = NULL;
 	NodeInfoList nodes = T_NODE_INFO_LIST_INITIALIZER;
 	NodeInfoListCell *cell = NULL;
-	bool success;
 	int i;
 	RepmgrdInfo **repmgrd_info;
+
+	repmgrd_info = (RepmgrdInfo **) pg_malloc0(sizeof(RepmgrdInfo *) * nodes.node_count);
+
+	if (repmgrd_info == NULL)
+	{
+		log_error(_("unable to allocate memory"));
+		exit(ERR_OUT_OF_MEMORY);
+	}
 
 	/* Connect to local database to obtain cluster connection data */
 	log_verbose(LOG_INFO, _("connecting to database"));
@@ -70,24 +82,7 @@ do_daemon_status(void)
 	else
 		conn = establish_db_connection_by_params(&source_conninfo, true);
 
-	success = get_all_node_records_with_upstream(conn, &nodes);
-
-	if (success == false)
-	{
-		/* get_all_node_records_with_upstream() will print error message */
-		PQfinish(conn);
-		exit(ERR_BAD_CONFIG);
-	}
-
-	if (nodes.node_count == 0)
-	{
-		log_error(_("no node records were found"));
-		log_hint(_("ensure at least one node is registered"));
-		PQfinish(conn);
-		exit(ERR_BAD_CONFIG);
-	}
-
-	repmgrd_info = (RepmgrdInfo **) pg_malloc0(sizeof(RepmgrdInfo *) * nodes.node_count);
+	fetch_node_records(conn, &nodes);
 
 	strncpy(headers_status[STATUS_ID].title, _("ID"), MAXLEN);
 	strncpy(headers_status[STATUS_NAME].title, _("Name"), MAXLEN);
@@ -108,6 +103,7 @@ do_daemon_status(void)
 		int j;
 
 		repmgrd_info[i] = pg_malloc0(sizeof(RepmgrdInfo));
+		repmgrd_info[i]->node_id = cell->node_info->node_id;
 		repmgrd_info[i]->pid = UNKNOWN_PID;
 		repmgrd_info[i]->running = false;
 		repmgrd_info[i]->paused = false;
@@ -117,7 +113,8 @@ do_daemon_status(void)
 
 		if (PQstatus(cell->node_info->conn) != CONNECTION_OK)
 		{
-			printf("unable to connect to node %i\n", cell->node_info->node_id);
+			log_warning(_("unable to connect to node %i\n"),
+						cell->node_info->node_id);
 		}
 		else
 		{
@@ -134,8 +131,10 @@ do_daemon_status(void)
 
 			repmgrd_info[i]->running = repmgrd_is_running(cell->node_info->conn);
 			repmgrd_info[i]->paused = repmgrd_is_paused(cell->node_info->conn);
+
+			PQfinish(cell->node_info->conn);
 		}
-		PQfinish(cell->node_info->conn);
+
 
 		headers_status[STATUS_NAME].cur_length = strlen(cell->node_info->node_name);
 		headers_status[STATUS_ROLE].cur_length = strlen(get_node_type_string(cell->node_info->type));
@@ -177,6 +176,7 @@ do_daemon_status(void)
 		}
 		printf("\n");
 
+		free(repmgrd_info[i]);
 		i++;
 	}
 
@@ -185,12 +185,102 @@ do_daemon_status(void)
 
 
 
+void
+do_daemon_pause(void)
+{
+	PGconn	   *conn = NULL;
+	NodeInfoList nodes = T_NODE_INFO_LIST_INITIALIZER;
+	NodeInfoListCell *cell = NULL;
+	RepmgrdInfo **repmgrd_info;
+	int i;
+
+	repmgrd_info = (RepmgrdInfo **) pg_malloc0(sizeof(RepmgrdInfo *) * nodes.node_count);
+
+	if (repmgrd_info == NULL)
+	{
+		log_error(_("unable to allocate memory"));
+		exit(ERR_OUT_OF_MEMORY);
+	}
+
+	/* Connect to local database to obtain cluster connection data */
+	log_verbose(LOG_INFO, _("connecting to database"));
+
+	if (strlen(config_file_options.conninfo))
+		conn = establish_db_connection(config_file_options.conninfo, true);
+	else
+		conn = establish_db_connection_by_params(&source_conninfo, true);
+
+	fetch_node_records(conn, &nodes);
+
+	i = 0;
+
+	for (cell = nodes.head; cell; cell = cell->next)
+	{
+		bool success;
+
+		repmgrd_info[i] = pg_malloc0(sizeof(RepmgrdInfo));
+		repmgrd_info[i]->node_id = cell->node_info->node_id;
+
+		log_verbose(LOG_DEBUG, "pausing node %i (%s)",
+					cell->node_info->node_id,
+					cell->node_info->node_name);
+		cell->node_info->conn = establish_db_connection_quiet(cell->node_info->conninfo);
+
+		if (PQstatus(cell->node_info->conn) != CONNECTION_OK)
+		{
+			log_warning(_("unable to connect to node %i\n"),
+						cell->node_info->node_id);
+		}
+		else
+		{
+			success = repmgrd_pause(cell->node_info->conn, true);
+			log_notice(_("node %i (%s) %s"),
+						 cell->node_info->node_id,
+						 cell->node_info->node_name,
+						 success == true ? "paused" : "not paused");
+			PQfinish(cell->node_info->conn);
+		}
+		i++;
+	}
+}
+
+
+void
+do_daemon_unpause(void)
+{
+
+}
+
+static void
+fetch_node_records(PGconn *conn, NodeInfoList *node_list)
+{
+	bool success = get_all_node_records(conn, node_list);
+
+	if (success == false)
+	{
+		/* get_all_node_records() will display any error message */
+		PQfinish(conn);
+		exit(ERR_BAD_CONFIG);
+	}
+
+	if (node_list->node_count == 0)
+	{
+		log_error(_("no node records were found"));
+		log_hint(_("ensure at least one node is registered"));
+		PQfinish(conn);
+		exit(ERR_BAD_CONFIG);
+	}
+}
+
+
 void do_daemon_help(void)
 {
 	print_help_header();
 
 	printf(_("Usage:\n"));
 	printf(_("    %s [OPTIONS] daemon status\n"), progname());
+	printf(_("    %s [OPTIONS] daemon pause\n"), progname());
+	printf(_("    %s [OPTIONS] daemon unpause\n"), progname());
 
 	puts("");
 }

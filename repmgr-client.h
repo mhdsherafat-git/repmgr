@@ -46,6 +46,8 @@
 #define CLUSTER_CROSSCHECK	   20
 #define CLUSTER_EVENT		   21
 #define DAEMON_STATUS		   22
+#define DAEMON_PAUSE		   23
+#define DAEMON_UNPAUSE		   24
 
 /* command line options without short versions */
 #define OPT_HELP						   1001

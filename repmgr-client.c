@@ -31,6 +31,8 @@
  * NODE CHECK
  *
  * DAEMON STATUS
+ * DAEMON PAUSE
+ * DAEMON UNPAUSE
  *
  * For internal use:
  * NODE REJOIN
@@ -914,6 +916,10 @@ main(int argc, char **argv)
 
 			if (strcasecmp(repmgr_action, "STATUS") == 0)
 				action = DAEMON_STATUS;
+			else if (strcasecmp(repmgr_action, "PAUSE") == 0)
+				action = DAEMON_PAUSE;
+			else if (strcasecmp(repmgr_action, "UNPAUSE") == 0)
+				action = DAEMON_UNPAUSE;
 		}
 		else
 		{
@@ -1316,6 +1322,12 @@ main(int argc, char **argv)
 			/* DAEMON */
 		case DAEMON_STATUS:
 			do_daemon_status();
+			break;
+		case DAEMON_PAUSE:
+			do_daemon_pause();
+			break;
+		case DAEMON_UNPAUSE:
+			do_daemon_unpause();
 			break;
 
 		default:

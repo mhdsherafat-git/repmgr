@@ -1786,6 +1786,34 @@ repmgrd_is_paused(PGconn *conn)
 }
 
 
+bool
+repmgrd_pause(PGconn *conn, bool pause)
+{
+	PQExpBufferData query;
+	PGresult   *res = NULL;
+	bool		success = true;
+
+	initPQExpBuffer(&query);
+
+	appendPQExpBuffer(&query,
+					  "SELECT repmgr.repmgrd_pause(%s)",
+					  pause == true ? "TRUE" : "FALSE");
+	res = PQexec(conn, query.data);
+	termPQExpBuffer(&query);
+
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		log_error(_("unable to execute \"SELECT repmgr.repmgrd_pause()\""));
+		log_detail("%s", PQerrorMessage(conn));
+
+		success = false;
+	}
+
+	PQclear(res);
+
+	return success;
+}
+
 /* ================ */
 /* result functions */
 /* ================ */

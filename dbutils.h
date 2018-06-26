@@ -403,6 +403,7 @@ void		repmgrd_set_pid(PGconn *conn, pid_t repmgrd_pid, const char *pidfile);
 pid_t		repmgrd_get_pid(PGconn *conn);
 bool		repmgrd_is_running(PGconn *conn);
 bool		repmgrd_is_paused(PGconn *conn);
+bool		repmgrd_pause(PGconn *conn, bool pause);
 
 /* extension functions */
 ExtensionStatus get_repmgr_extension_status(PGconn *conn);
