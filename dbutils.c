@@ -1751,6 +1751,57 @@ get_repmgr_extension_status(PGconn *conn)
 	return status;
 }
 
+
+/*
+ * This function checks if the repmgr extension was created and logs errors appropriately
+ * depending on the outcome. It will exit whatever action was called immediatly if the
+ * repmgr extension is not installed, unless exit_on_error is false.
+ */
+bool
+check_repmgr_extension_installed(PGconn *conn, const bool exit_on_error)
+{
+	ExtensionStatus extension_status = REPMGR_UNKNOWN;
+	char       *dbname = NULL;
+
+	extension_status = get_repmgr_extension_status(conn);
+
+	if (extension_status != REPMGR_INSTALLED)
+        {
+                if (!exit_on_error)
+                {
+                        /* this is unlikely to happen */
+                        if (extension_status == REPMGR_UNKNOWN)
+                        {
+                                log_error(_("unable to determine status of \"repmgr\" extension"));
+                                log_detail("%s", PQerrorMessage(conn));
+                                PQfinish(source_conn);
+                                exit(ERR_DB_QUERY);
+                        }
+
+                        /* schema doesn't exist */
+                        log_error(_("repmgr extension not found on source node"));
+
+                        if (extension_status == REPMGR_AVAILABLE)
+                        {
+                                log_detail(_("repmgr extension is available but not installed in database \"%s\""),
+                                           param_get(&source_conninfo, "dbname"));
+                                log_hint(_("You need to run \"CREATE EXTENSION repmgr\" on the database configured for repmgr"));
+                        }
+                        else if (extension_status == REPMGR_UNAVAILABLE)
+                        {
+                                log_detail(_("repmgr extension is not available on the upstream node"));
+                        }
+
+                        PQfinish(source_conn);
+                        exit(ERR_BAD_CONFIG);
+                }
+
+                log_warning(_("repmgr extension not found on source node"));
+		return false;
+        }
+	return true;
+}
+
 /* ========================= */
 /* node management functions */
 /* ========================= */

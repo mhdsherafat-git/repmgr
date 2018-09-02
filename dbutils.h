@@ -402,6 +402,8 @@ BackupState	server_in_exclusive_backup_mode(PGconn *conn);
 
 /* extension functions */
 ExtensionStatus get_repmgr_extension_status(PGconn *conn);
+bool            check_repmgr_extension_installed(PGconn *conn, const bool exit_on_error);
+
 
 /* node management functions */
 void		checkpoint(PGconn *conn);
