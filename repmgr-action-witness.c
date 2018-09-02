@@ -143,8 +143,11 @@ do_witness_register(void)
 	 */
 
 	/* create repmgr extension, if does not exist */
-	if (runtime_options.dry_run == false &&  !create_repmgr_extension(witness_conn))
+	if (runtime_options.dry_run == false && !check_repmgr_extension_installed(witness_conn, false))
 	{
+		log_error(_("repmgr extension not installed on witness node"));
+		log_hint(_("You need to run \"CREATE EXTENSION repmgr\" on the database configured for repmgr"));
+
 		PQfinish(witness_conn);
 		PQfinish(primary_conn);
 

@@ -4145,41 +4145,7 @@ check_source_server()
 	 * to be used as a standalone clone tool)
 	 */
 
-	extension_status = get_repmgr_extension_status(primary_conn);
-
-	if (extension_status != REPMGR_INSTALLED)
-	{
-		if (!runtime_options.force)
-		{
-			/* this is unlikely to happen */
-			if (extension_status == REPMGR_UNKNOWN)
-			{
-				log_error(_("unable to determine status of \"repmgr\" extension"));
-				log_detail("%s", PQerrorMessage(primary_conn));
-				PQfinish(source_conn);
-				exit(ERR_DB_QUERY);
-			}
-
-			/* schema doesn't exist */
-			log_error(_("repmgr extension not found on source node"));
-
-			if (extension_status == REPMGR_AVAILABLE)
-			{
-				log_detail(_("repmgr extension is available but not installed in database \"%s\""),
-						   param_get(&source_conninfo, "dbname"));
-			}
-			else if (extension_status == REPMGR_UNAVAILABLE)
-			{
-				log_detail(_("repmgr extension is not available on the upstream node"));
-			}
-
-			log_hint(_("check that the upstream node is part of a repmgr cluster"));
-			PQfinish(source_conn);
-			exit(ERR_BAD_CONFIG);
-		}
-
-		log_warning(_("repmgr extension not found on source node"));
-	}
+	check_repmgr_extension_installed(primary_conn, !runtime_options.force);
 
 	/* Fetch the source's data directory */
 	get_superuser_connection(&source_conn, &superuser_conn, &privileged_conn);

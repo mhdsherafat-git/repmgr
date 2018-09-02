@@ -73,15 +73,10 @@ do_primary_register(void)
 	log_verbose(LOG_INFO, _("server is not in recovery"));
 
 	/*
-	 * create the repmgr extension if it doesn't already exist;
-	 * note that create_repmgr_extension() will take into account
-	 * the --dry-run option
+	 * Check that repmgr extension is installed.
+	 * Exit if it's not installed
 	 */
-	if (!create_repmgr_extension(conn))
-	{
-		PQfinish(conn);
-		exit(ERR_BAD_CONFIG);
-	}
+	check_repmgr_extension_installed(conn, true);
 
 	/*
 	 * In --dry-run mode we can't proceed any further as the following code

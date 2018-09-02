@@ -125,27 +125,10 @@ do_bdr_register(void)
 		termPQExpBuffer(&bdr_local_node_name);
 	}
 
+	pfree(dbname);
+
 	/* check whether repmgr extension exists, and there are no non-BDR nodes registered */
-	extension_status = get_repmgr_extension_status(conn);
-
-	if (extension_status == REPMGR_UNKNOWN)
-	{
-		log_error(_("unable to determine status of \"repmgr\" extension in database \"%s\""),
-				  dbname);
-		PQfinish(conn);
-		pfree(dbname);
-		exit(ERR_BAD_CONFIG);
-	}
-
-	if (extension_status == REPMGR_UNAVAILABLE)
-	{
-		log_error(_("\"repmgr\" extension is not available"));
-		PQfinish(conn);
-		pfree(dbname);
-		exit(ERR_BAD_CONFIG);
-	}
-
-	if (extension_status == REPMGR_INSTALLED)
+	if (check_repmgr_extension_installed(conn, true))
 	{
 		if (!is_bdr_repmgr(conn))
 		{
@@ -155,25 +138,6 @@ do_bdr_register(void)
 			exit(ERR_BAD_CONFIG);
 		}
 	}
-	else
-	{
-		log_debug("creating repmgr extension in database \"%s\"", dbname);
-
-		begin_transaction(conn);
-
-		if (!create_repmgr_extension(conn))
-		{
-			log_error(_("unable to create repmgr extension - see preceding error message(s); aborting"));
-			rollback_transaction(conn);
-			pfree(dbname);
-			PQfinish(conn);
-			exit(ERR_BAD_CONFIG);
-		}
-
-		commit_transaction(conn);
-	}
-
-	pfree(dbname);
 
 	if (bdr_node_has_repmgr_set(conn, config_file_options.node_name) == false)
 	{
