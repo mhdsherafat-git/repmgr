@@ -1761,7 +1761,6 @@ bool
 check_repmgr_extension_installed(PGconn *conn, const bool exit_on_error)
 {
 	ExtensionStatus extension_status = REPMGR_UNKNOWN;
-	char       *dbname = NULL;
 
 	extension_status = get_repmgr_extension_status(conn);
 
@@ -1774,7 +1773,7 @@ check_repmgr_extension_installed(PGconn *conn, const bool exit_on_error)
                         {
                                 log_error(_("unable to determine status of \"repmgr\" extension"));
                                 log_detail("%s", PQerrorMessage(conn));
-                                PQfinish(source_conn);
+                                PQfinish(conn);
                                 exit(ERR_DB_QUERY);
                         }
 
@@ -1783,8 +1782,13 @@ check_repmgr_extension_installed(PGconn *conn, const bool exit_on_error)
 
                         if (extension_status == REPMGR_AVAILABLE)
                         {
-                                log_detail(_("repmgr extension is available but not installed in database \"%s\""),
-                                           param_get(&source_conninfo, "dbname"));
+				if (strlen(config_file_options.conninfo))
+					log_detail(_("repmgr extension is available but not installed in database \"%s\""),
+						   param_get(config_file_options.conninfo, "dbname"));
+				else
+					log_detail(_("repmgr extension is available but not installed in database \"%s\""),
+						   param_get(&source_conninfo, "dbname"));
+
                                 log_hint(_("You need to run \"CREATE EXTENSION repmgr\" on the database configured for repmgr"));
                         }
                         else if (extension_status == REPMGR_UNAVAILABLE)
@@ -1792,7 +1796,7 @@ check_repmgr_extension_installed(PGconn *conn, const bool exit_on_error)
                                 log_detail(_("repmgr extension is not available on the upstream node"));
                         }
 
-                        PQfinish(source_conn);
+                        PQfinish(conn);
                         exit(ERR_BAD_CONFIG);
                 }
 
