@@ -1793,7 +1793,7 @@ check_repmgr_extension_installed(PGconn *conn, const bool exit_on_error)
                         }
                         else if (extension_status == REPMGR_UNAVAILABLE)
                         {
-                                log_detail(_("repmgr extension is not available on the upstream node"));
+                                log_detail(_("repmgr extension is not available on the node"));
                         }
 
                         PQfinish(conn);
