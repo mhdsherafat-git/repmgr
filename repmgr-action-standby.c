@@ -4081,7 +4081,6 @@ check_source_server()
 
 	t_node_info node_record = T_NODE_INFO_INITIALIZER;
 	RecordStatus record_status = RECORD_NOT_FOUND;
-	ExtensionStatus extension_status = REPMGR_UNKNOWN;
 
 	/* Attempt to connect to the upstream server to verify its configuration */
 	log_verbose(LOG_DEBUG, "check_source_server()");

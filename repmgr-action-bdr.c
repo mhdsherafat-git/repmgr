@@ -36,7 +36,6 @@ do_bdr_register(void)
 {
 	PGconn	   *conn = NULL;
 	BdrNodeInfoList bdr_nodes = T_BDR_NODE_INFO_LIST_INITIALIZER;
-	ExtensionStatus extension_status = REPMGR_UNKNOWN;
 	t_node_info node_info = T_NODE_INFO_INITIALIZER;
 	RecordStatus record_status = RECORD_NOT_FOUND;
 	PQExpBufferData event_details;
