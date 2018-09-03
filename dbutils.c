@@ -1782,13 +1782,7 @@ check_repmgr_extension_installed(PGconn *conn, const bool exit_on_error)
 
                         if (extension_status == REPMGR_AVAILABLE)
                         {
-				if (strlen(config_file_options.conninfo))
-					log_detail(_("repmgr extension is available but not installed in database \"%s\""),
-						   param_get(config_file_options.conninfo, "dbname"));
-				else
-					log_detail(_("repmgr extension is available but not installed in database \"%s\""),
-						   param_get(&source_conninfo, "dbname"));
-
+				log_detail(_("repmgr extension is available but not installed in the configured database"));
                                 log_hint(_("You need to run \"CREATE EXTENSION repmgr\" on the database configured for repmgr"));
                         }
                         else if (extension_status == REPMGR_UNAVAILABLE)
