@@ -87,30 +87,29 @@ main(int argc, char **argv)
 	bool		cli_monitoring_history = false;
 
 	RecordStatus record_status;
-	ExtensionStatus extension_status = REPMGR_UNKNOWN;
 
 	FILE	   *fd;
 
 	static struct option long_options[] =
 	{
-/* general options */
+		/* general options */
 		{"help", no_argument, NULL, OPT_HELP},
 		{"version", no_argument, NULL, 'V'},
 
-/* configuration options */
+		/* configuration options */
 		{"config-file", required_argument, NULL, 'f'},
 
-/* daemon options */
+		/* daemon options */
 		{"daemonize", optional_argument, NULL, 'd'},
 		{"pid-file", required_argument, NULL, 'p'},
 		{"show-pid-file", no_argument, NULL, 's'},
 		{"no-pid-file", no_argument, NULL, OPT_NO_PID_FILE},
 
-/* logging options */
+		/* logging options */
 		{"log-level", required_argument, NULL, 'L'},
 		{"verbose", no_argument, NULL, 'v'},
 
-/* legacy options */
+		/* legacy options */
 		{"monitoring-history", no_argument, NULL, 'm'},
 		{NULL, 0, NULL, 0}
 	};
@@ -387,35 +386,7 @@ main(int argc, char **argv)
 	 */
 
 	/* Check "repmgr" the extension is installed */
-	extension_status = get_repmgr_extension_status(local_conn);
-
-	if (extension_status != REPMGR_INSTALLED)
-	{
-		/* this is unlikely to happen */
-		if (extension_status == REPMGR_UNKNOWN)
-		{
-			log_error(_("unable to determine status of \"repmgr\" extension"));
-			log_detail("%s", PQerrorMessage(local_conn));
-			close_connection(&local_conn);
-			exit(ERR_DB_QUERY);
-		}
-
-		log_error(_("repmgr extension not found on this node"));
-
-		if (extension_status == REPMGR_AVAILABLE)
-		{
-			log_detail(_("repmgr extension is available but not installed in database \"%s\""),
-					   PQdb(local_conn));
-		}
-		else if (extension_status == REPMGR_UNAVAILABLE)
-		{
-			log_detail(_("repmgr extension is not available on this node"));
-		}
-
-		log_hint(_("check that this node is part of a repmgr cluster"));
-		close_connection(&local_conn);
-		exit(ERR_BAD_CONFIG);
-	}
+	check_repmgr_extension_installed(local_conn, true);
 
 	/* Retrieve record for this node from the local database */
 	record_status = get_node_record(local_conn, config_file_options.node_id, &local_node_info);
