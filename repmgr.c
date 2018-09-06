@@ -26,6 +26,7 @@
 #include "access/xlog.h"
 #include "miscadmin.h"
 #include "replication/walreceiver.h"
+#include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/lwlock.h"
 #include "storage/procarray.h"
@@ -45,13 +46,14 @@
 #include "utils/snapmgr.h"
 #include "pgstat.h"
 
-
 #include "voting.h"
 
 #define UNKNOWN_NODE_ID		-1
 #define UNKNOWN_PID			-1
 
 #define TRANCHE_NAME "repmgrd"
+#define REPMGRD_STATE_FILE PGSTAT_STAT_PERMANENT_DIRECTORY "/repmgrd_state.txt"
+
 
 PG_MODULE_MAGIC;
 
@@ -230,6 +232,8 @@ Datum
 set_local_node_id(PG_FUNCTION_ARGS)
 {
 	int			local_node_id = UNKNOWN_NODE_ID;
+	int			stored_node_id = UNKNOWN_NODE_ID;
+	int			paused = -1;
 
 	if (!shared_state)
 		PG_RETURN_NULL();
@@ -239,12 +243,53 @@ set_local_node_id(PG_FUNCTION_ARGS)
 
 	local_node_id = PG_GETARG_INT32(0);
 
+	/* read state file and if exists/valid, update "repmgrd_paused" */
+	{
+		FILE	   *file = NULL;
+
+		file = AllocateFile(REPMGRD_STATE_FILE, PG_BINARY_R);
+
+		if (file != NULL)
+		{
+			int			buffer_size = 128;
+			char		buffer[buffer_size];
+
+			if (fgets(&buffer, buffer_size, file) != NULL)
+			{
+				if (sscanf(buffer, "%i:%i", &stored_node_id, &paused) != 2)
+				{
+					elog(WARNING, "unable to parse repmgrd state file");
+				}
+				else
+				{
+					elog(DEBUG1, "node_id: %i; paused: %i", stored_node_id, paused);
+				}
+			}
+
+			FreeFile(file);
+		}
+
+	}
+
 	LWLockAcquire(shared_state->lock, LW_EXCLUSIVE);
 
 	/* only set local_node_id once, as it should never change */
 	if (shared_state->local_node_id == UNKNOWN_NODE_ID)
 	{
 		shared_state->local_node_id = local_node_id;
+	}
+
+	/* only update if state file valid */
+	if (stored_node_id == shared_state->local_node_id)
+	{
+		if (paused == 0)
+		{
+			shared_state->repmgrd_paused = false;
+		}
+		else if (paused == 1)
+		{
+			shared_state->repmgrd_paused = true;
+		}
 	}
 
 	LWLockRelease(shared_state->lock);
@@ -558,11 +603,43 @@ repmgrd_is_running(PG_FUNCTION_ARGS)
 Datum
 repmgrd_pause(PG_FUNCTION_ARGS)
 {
-	bool pause = PG_GETARG_BOOL(0);
+	bool		pause = PG_GETARG_BOOL(0);
+	FILE	   *file = NULL;
+	StringInfoData buf;
 
 	LWLockAcquire(shared_state->lock, LW_EXCLUSIVE);
 	shared_state->repmgrd_paused = pause;
 	LWLockRelease(shared_state->lock);
+
+
+	/* write state to file */
+	file = AllocateFile(REPMGRD_STATE_FILE, PG_BINARY_W);
+
+	if (file == NULL)
+	{
+		elog(DEBUG1, "unable to allocate %s", REPMGRD_STATE_FILE);
+
+		// XXX anything else we can do? log?
+		PG_RETURN_VOID();
+	}
+
+	elog(DEBUG1, "allocated");
+
+	initStringInfo(&buf);
+
+	LWLockAcquire(shared_state->lock, LW_SHARED);
+
+	appendStringInfo(&buf, "%i:%i",
+					 shared_state->local_node_id,
+					 pause ? 1 : 0);
+	LWLockRelease(shared_state->lock);
+
+	// XXX check success
+	fwrite(buf.data, strlen(buf.data) + 1, 1, file);
+
+
+	resetStringInfo(&buf);
+	FreeFile(file);
 
 	PG_RETURN_VOID();
 }
