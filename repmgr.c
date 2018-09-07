@@ -254,7 +254,7 @@ set_local_node_id(PG_FUNCTION_ARGS)
 			int			buffer_size = 128;
 			char		buffer[buffer_size];
 
-			if (fgets(&buffer, buffer_size, file) != NULL)
+			if (fgets(buffer, buffer_size, file) != NULL)
 			{
 				if (sscanf(buffer, "%i:%i", &stored_node_id, &paused) != 2)
 				{

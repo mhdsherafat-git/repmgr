@@ -35,8 +35,8 @@ typedef enum
 	STATUS_ID = 0,
 	STATUS_NAME,
 	STATUS_ROLE,
-	STATUS_PID,
 	STATUS_RUNNING,
+	STATUS_PID,
 	STATUS_PAUSED
 }			StatusHeader;
 
@@ -65,6 +65,7 @@ do_daemon_status(void)
 	NodeInfoListCell *cell = NULL;
 	int i;
 	RepmgrdInfo **repmgrd_info;
+	ItemList	warnings = {NULL, NULL};
 
 	repmgrd_info = (RepmgrdInfo **) pg_malloc0(sizeof(RepmgrdInfo *) * nodes.node_count);
 
@@ -87,8 +88,8 @@ do_daemon_status(void)
 	strncpy(headers_status[STATUS_ID].title, _("ID"), MAXLEN);
 	strncpy(headers_status[STATUS_NAME].title, _("Name"), MAXLEN);
 	strncpy(headers_status[STATUS_ROLE].title, _("Role"), MAXLEN);
-	strncpy(headers_status[STATUS_PID].title, _("PID"), MAXLEN);
 	strncpy(headers_status[STATUS_RUNNING].title, _("Running?"), MAXLEN);
+	strncpy(headers_status[STATUS_PID].title, _("PID"), MAXLEN);
 	strncpy(headers_status[STATUS_PAUSED].title, _("Paused?"), MAXLEN);
 
 	for (i = 0; i < STATUS_HEADER_COUNT; i++)
@@ -104,8 +105,8 @@ do_daemon_status(void)
 
 		repmgrd_info[i] = pg_malloc0(sizeof(RepmgrdInfo));
 		repmgrd_info[i]->node_id = cell->node_info->node_id;
-		repmgrd_info[i]->pid = UNKNOWN_PID;
 		repmgrd_info[i]->running = false;
+		repmgrd_info[i]->pid = UNKNOWN_PID;
 		repmgrd_info[i]->paused = false;
 
 		cell->node_info->conn = establish_db_connection_quiet(cell->node_info->conninfo);
@@ -113,8 +114,23 @@ do_daemon_status(void)
 
 		if (PQstatus(cell->node_info->conn) != CONNECTION_OK)
 		{
-			log_warning(_("unable to connect to node %i\n"),
-						cell->node_info->node_id);
+
+			if (runtime_options.verbose)
+			{
+				char		error[MAXLEN];
+
+				strncpy(error, PQerrorMessage(cell->node_info->conn), MAXLEN);
+
+				item_list_append_format(&warnings,
+										"when attempting to connect to node \"%s\" (ID: %i), following error encountered :\n\"%s\"",
+										cell->node_info->node_name, cell->node_info->node_id, trim(error));
+			}
+			else
+			{
+				item_list_append_format(&warnings,
+										"unable to  connect to node \"%s\" (ID: %i)",
+										cell->node_info->node_name, cell->node_info->node_id);
+			}
 		}
 		else
 		{
@@ -170,8 +186,8 @@ do_daemon_status(void)
 			printf(" %-*i ",  headers_status[STATUS_ID].max_length, cell->node_info->node_id);
 			printf("| %-*s ", headers_status[STATUS_NAME].max_length, cell->node_info->node_name);
 			printf("| %-*s ", headers_status[STATUS_ROLE].max_length, get_node_type_string(cell->node_info->type));
-			printf("| %-*s ", headers_status[STATUS_PID].max_length, repmgrd_info[i]->pid_text);
 			printf("| %-*s ", headers_status[STATUS_RUNNING].max_length, repmgrd_info[i]->running ? "yes" : "no");
+			printf("| %-*s ", headers_status[STATUS_PID].max_length, repmgrd_info[i]->pid_text);
 			printf("| %-*s ", headers_status[STATUS_PAUSED].max_length, repmgrd_info[i]->paused ? "yes" : "no");
 		}
 		printf("\n");
@@ -181,6 +197,24 @@ do_daemon_status(void)
 	}
 
 	free(repmgrd_info);
+
+	/* emit any warnings */
+
+	if (warnings.head != NULL && runtime_options.terse == false && runtime_options.output_mode != OM_CSV)
+	{
+		ItemListCell *cell = NULL;
+
+		printf(_("\nWARNING: following issues were detected\n"));
+		for (cell = warnings.head; cell; cell = cell->next)
+		{
+			printf(_("  - %s\n"), cell->string);
+		}
+
+		if (runtime_options.verbose == false)
+		{
+			log_hint(_("execute with --verbose option to see connection error messages"));
+		}
+	}
 }
 
 
