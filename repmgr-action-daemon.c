@@ -25,7 +25,6 @@
 
 
 
-
 // repmgrd start time?
 // repmgrd mode
 // priority
@@ -55,6 +54,7 @@ typedef struct RepmgrdInfo {
 
 
 static void fetch_node_records(PGconn *conn, NodeInfoList *node_list);
+static void _do_repmgr_pause(bool pause);
 
 
 void
@@ -217,10 +217,21 @@ do_daemon_status(void)
 	}
 }
 
-
-
 void
 do_daemon_pause(void)
+{
+	_do_repmgr_pause(true);
+}
+
+void
+do_daemon_unpause(void)
+{
+	_do_repmgr_pause(false);
+}
+
+
+static void
+_do_repmgr_pause(bool pause)
 {
 	PGconn	   *conn = NULL;
 	NodeInfoList nodes = T_NODE_INFO_LIST_INITIALIZER;
@@ -267,11 +278,13 @@ do_daemon_pause(void)
 		}
 		else
 		{
-			success = repmgrd_pause(cell->node_info->conn, true);
+			success = repmgrd_pause(cell->node_info->conn, pause);
 			log_notice(_("node %i (%s) %s"),
-						 cell->node_info->node_id,
-						 cell->node_info->node_name,
-						 success == true ? "paused" : "not paused");
+					   cell->node_info->node_id,
+					   cell->node_info->node_name,
+					   success == true
+					   	   ? pause == true ? "paused" : "unpaused"
+					   	   : pause == true ? "not paused" : "not unpaused");
 			PQfinish(cell->node_info->conn);
 		}
 		i++;
@@ -279,11 +292,6 @@ do_daemon_pause(void)
 }
 
 
-void
-do_daemon_unpause(void)
-{
-
-}
 
 static void
 fetch_node_records(PGconn *conn, NodeInfoList *node_list)
