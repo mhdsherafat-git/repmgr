@@ -160,21 +160,6 @@ CREATE FUNCTION set_repmgrd_pid(INT, TEXT)
   AS 'MODULE_PATHNAME', 'set_repmgrd_pid'
   LANGUAGE C STRICT;
 
-CREATE FUNCTION repmgrd_is_running()
-  RETURNS BOOL
-  AS 'MODULE_PATHNAME', 'repmgrd_is_running'
-  LANGUAGE C STRICT;
-
-CREATE FUNCTION repmgrd_pause(BOOL)
-  RETURNS VOID
-  AS 'MODULE_PATHNAME', 'repmgrd_pause'
-  LANGUAGE C STRICT;
-
-CREATE FUNCTION repmgrd_is_paused()
-  RETURNS BOOL
-  AS 'MODULE_PATHNAME', 'repmgrd_is_paused'
-  LANGUAGE C STRICT;
-
 
 CREATE VIEW repmgr.replication_status AS
   SELECT m.primary_node_id, m.standby_node_id, n.node_name AS standby_name,
