@@ -35,7 +35,7 @@
 
 static char *config_file = NULL;
 static bool verbose = false;
-static char pid_file[MAXPGPATH];
+char pid_file[MAXPGPATH];
 static bool daemonize = true;
 static bool show_pid_file = false;
 static bool no_pid_file = false;

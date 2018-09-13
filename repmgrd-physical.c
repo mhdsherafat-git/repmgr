@@ -338,6 +338,7 @@ monitor_streaming_primary(void)
 					if (stored_local_node_id == UNKNOWN_NODE_ID)
 					{
 						repmgrd_set_local_node_id(local_conn, config_file_options.node_id);
+						repmgrd_set_pid(local_conn, getpid(), pid_file);
 					}
 
 					goto loop;
@@ -1203,6 +1204,7 @@ loop:
 				if (stored_local_node_id == UNKNOWN_NODE_ID)
 				{
 					repmgrd_set_local_node_id(local_conn, config_file_options.node_id);
+					repmgrd_set_pid(local_conn, getpid(), pid_file);
 				}
 			}
 		}
@@ -1568,6 +1570,7 @@ loop:
 				if (stored_local_node_id == UNKNOWN_NODE_ID)
 				{
 					repmgrd_set_local_node_id(local_conn, config_file_options.node_id);
+					repmgrd_set_pid(local_conn, getpid(), pid_file);
 				}
 			}
 		}
@@ -2089,6 +2092,7 @@ do_upstream_standby_failover(void)
 
 	/* refresh shared memory settings which will have been zapped by the restart */
 	repmgrd_set_local_node_id(local_conn, config_file_options.node_id);
+	repmgrd_set_pid(local_conn, getpid(), pid_file);
 
 	/*
 	 *
@@ -2559,6 +2563,7 @@ follow_new_primary(int new_primary_id)
 
 	/* refresh shared memory settings which will have been zapped by the restart */
 	repmgrd_set_local_node_id(local_conn, config_file_options.node_id);
+	repmgrd_set_pid(local_conn, getpid(), pid_file);
 
 	initPQExpBuffer(&event_details);
 	appendPQExpBuffer(&event_details,
@@ -3081,6 +3086,7 @@ check_connection(t_node_info *node_info, PGconn **conn)
 			if (stored_local_node_id == UNKNOWN_NODE_ID)
 			{
 				repmgrd_set_local_node_id(*conn, config_file_options.node_id);
+				repmgrd_set_pid(local_conn, getpid(), pid_file);
 			}
 
 		}
