@@ -1681,7 +1681,7 @@ server_in_exclusive_backup_mode(PGconn *conn)
 
 	PQclear(res);
 
-	return repmgrd_pid;
+	return backup_state;
 }
 
 
