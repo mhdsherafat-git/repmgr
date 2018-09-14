@@ -78,6 +78,9 @@
 <!ENTITY repmgr-cluster-crosscheck SYSTEM "repmgr-cluster-crosscheck.sgml">
 <!ENTITY repmgr-cluster-event SYSTEM "repmgr-cluster-event.sgml">
 <!ENTITY repmgr-cluster-cleanup SYSTEM "repmgr-cluster-cleanup.sgml">
+<!ENTITY repmgr-daemon-status SYSTEM "repmgr-daemon-status.sgml">
+<!ENTITY repmgr-daemon-pause SYSTEM "repmgr-daemon-pause.sgml">
+<!ENTITY repmgr-daemon-unpause SYSTEM "repmgr-daemon-unpause.sgml">
 
 <!ENTITY appendix-release-notes  SYSTEM "appendix-release-notes.sgml">
 <!ENTITY appendix-faq      SYSTEM "appendix-faq.sgml">
