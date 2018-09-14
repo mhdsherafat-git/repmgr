@@ -999,7 +999,7 @@ monitor_streaming_standby(void)
 				}
 
 
-				if (config_file_options.failover == FAILOVER_AUTOMATIC)
+				if (config_file_options.failover == FAILOVER_AUTOMATIC && repmgrd_is_paused(local_conn) == false)
 				{
 					get_active_sibling_node_records(local_conn,
 													local_node_info.node_id,
