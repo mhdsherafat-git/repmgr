@@ -504,6 +504,9 @@ get_repmgrd_pid(PG_FUNCTION_ARGS)
 {
 	int repmgrd_pid = UNKNOWN_PID;
 
+	if (!shared_state)
+		PG_RETURN_NULL();
+
 	LWLockAcquire(shared_state->lock, LW_SHARED);
 	repmgrd_pid = shared_state->repmgrd_pid;
 	LWLockRelease(shared_state->lock);
@@ -519,6 +522,9 @@ Datum
 get_repmgrd_pidfile(PG_FUNCTION_ARGS)
 {
 	char repmgrd_pidfile[MAXPGPATH];
+
+	if (!shared_state)
+		PG_RETURN_NULL();
 
 	memset(repmgrd_pidfile, 0, MAXPGPATH);
 
@@ -579,6 +585,9 @@ repmgrd_is_running(PG_FUNCTION_ARGS)
 	int repmgrd_pid = UNKNOWN_PID;
 	int kill_ret;
 
+	if (!shared_state)
+		PG_RETURN_NULL();
+
 	LWLockAcquire(shared_state->lock, LW_SHARED);
 	repmgrd_pid = shared_state->repmgrd_pid;
 	LWLockRelease(shared_state->lock);
@@ -603,14 +612,21 @@ repmgrd_is_running(PG_FUNCTION_ARGS)
 Datum
 repmgrd_pause(PG_FUNCTION_ARGS)
 {
-	bool		pause = PG_GETARG_BOOL(0);
+	bool		pause;
 	FILE	   *file = NULL;
 	StringInfoData buf;
+
+	if (!shared_state)
+		PG_RETURN_NULL();
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	pause = PG_GETARG_BOOL(0);
 
 	LWLockAcquire(shared_state->lock, LW_EXCLUSIVE);
 	shared_state->repmgrd_paused = pause;
 	LWLockRelease(shared_state->lock);
-
 
 	/* write state to file */
 	file = AllocateFile(REPMGRD_STATE_FILE, PG_BINARY_W);
@@ -649,6 +665,9 @@ Datum
 repmgrd_is_paused(PG_FUNCTION_ARGS)
 {
 	bool is_paused;
+
+	if (!shared_state)
+		PG_RETURN_NULL();
 
 	LWLockAcquire(shared_state->lock, LW_SHARED);
 	is_paused = shared_state->repmgrd_paused;
