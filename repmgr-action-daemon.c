@@ -300,7 +300,7 @@ _do_repmgr_pause(bool pause)
 
 		if (PQstatus(cell->node_info->conn) != CONNECTION_OK)
 		{
-			log_warning(_("unable to connect to node %i\n"),
+			log_warning(_("unable to connect to node %i"),
 						cell->node_info->node_id);
 		}
 		else

@@ -150,7 +150,7 @@ do_cluster_show(void)
 			else
 			{
 				item_list_append_format(&warnings,
-										"unable to  connect to node \"%s\" (ID: %i)",
+										"unable to connect to node \"%s\" (ID: %i)",
 										cell->node_info->node_name, cell->node_info->node_id);
 			}
 		}
