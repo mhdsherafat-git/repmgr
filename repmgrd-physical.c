@@ -799,7 +799,7 @@ monitor_streaming_standby(void)
 				}
 
 
-				/* still down after reconnect attempt(s) */
+				/* upstream is still down after reconnect attempt(s) */
 				if (upstream_node_info.node_status == NODE_STATUS_DOWN)
 				{
 					bool		failover_done = false;
@@ -1075,7 +1075,15 @@ loop:
 				termPQExpBuffer(&monitoring_summary);
 				if (monitoring_state == MS_DEGRADED && config_file_options.failover == FAILOVER_AUTOMATIC)
 				{
-					log_detail(_("waiting for upstream or another primary to reappear"));
+					if (PQstatus(local_conn) == CONNECTION_OK && repmgrd_is_paused(local_conn))
+					{
+						log_detail(_("repmgrd paused by administrator"));
+						log_hint(_("execute \"repmgr daemon unpause\" to resume normal failover mode"));
+					}
+					else
+					{
+						log_detail(_("waiting for upstream or another primary to reappear"));
+					}
 				}
 				else if (config_file_options.monitoring_history == true)
 				{
