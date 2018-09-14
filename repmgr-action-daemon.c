@@ -34,12 +34,13 @@ typedef enum
 	STATUS_ID = 0,
 	STATUS_NAME,
 	STATUS_ROLE,
+	STATUS_PG,
 	STATUS_RUNNING,
 	STATUS_PID,
 	STATUS_PAUSED
 }			StatusHeader;
 
-#define STATUS_HEADER_COUNT 6
+#define STATUS_HEADER_COUNT 7
 
 struct ColHeader headers_status[STATUS_HEADER_COUNT];
 
@@ -48,7 +49,9 @@ typedef struct RepmgrdInfo {
 	int pid;
 	char pid_text[MAXLEN];
 	char pid_file[MAXLEN];
+	char pg_running[MAXLEN];
 	bool running;
+	char repmgrd_running[MAXLEN];
 	bool paused;
 } RepmgrdInfo;
 
@@ -88,7 +91,8 @@ do_daemon_status(void)
 	strncpy(headers_status[STATUS_ID].title, _("ID"), MAXLEN);
 	strncpy(headers_status[STATUS_NAME].title, _("Name"), MAXLEN);
 	strncpy(headers_status[STATUS_ROLE].title, _("Role"), MAXLEN);
-	strncpy(headers_status[STATUS_RUNNING].title, _("Running?"), MAXLEN);
+	strncpy(headers_status[STATUS_PG].title, _("Status"), MAXLEN);
+	strncpy(headers_status[STATUS_RUNNING].title, _("repmgrd"), MAXLEN);
 	strncpy(headers_status[STATUS_PID].title, _("PID"), MAXLEN);
 	strncpy(headers_status[STATUS_PAUSED].title, _("Paused?"), MAXLEN);
 
@@ -105,12 +109,11 @@ do_daemon_status(void)
 
 		repmgrd_info[i] = pg_malloc0(sizeof(RepmgrdInfo));
 		repmgrd_info[i]->node_id = cell->node_info->node_id;
-		repmgrd_info[i]->running = false;
 		repmgrd_info[i]->pid = UNKNOWN_PID;
 		repmgrd_info[i]->paused = false;
+		repmgrd_info[i]->running = false;
 
 		cell->node_info->conn = establish_db_connection_quiet(cell->node_info->conninfo);
-
 
 		if (PQstatus(cell->node_info->conn) != CONNECTION_OK)
 		{
@@ -131,10 +134,27 @@ do_daemon_status(void)
 										"unable to  connect to node \"%s\" (ID: %i)",
 										cell->node_info->node_name, cell->node_info->node_id);
 			}
+
+			maxlen_snprintf(repmgrd_info[i]->pg_running, "%s", _("not running"));
+			maxlen_snprintf(repmgrd_info[i]->repmgrd_running, "%s", _("n/a"));
+			maxlen_snprintf(repmgrd_info[i]->pid_text, "%s", _("n/a"));
 		}
 		else
 		{
+			maxlen_snprintf(repmgrd_info[i]->pg_running, "%s", _("running"));
+
 			repmgrd_info[i]->pid = repmgrd_get_pid(cell->node_info->conn);
+
+			repmgrd_info[i]->running = repmgrd_is_running(cell->node_info->conn);
+
+			if (repmgrd_info[i]->running == true)
+			{
+				maxlen_snprintf(repmgrd_info[i]->repmgrd_running, "%s", _("running"));
+			}
+			else
+			{
+				maxlen_snprintf(repmgrd_info[i]->repmgrd_running, "%s", _("not running"));
+			}
 
 			if (repmgrd_info[i]->pid == UNKNOWN_PID)
 			{
@@ -145,7 +165,6 @@ do_daemon_status(void)
 				maxlen_snprintf(repmgrd_info[i]->pid_text, "%i", repmgrd_info[i]->pid);
 			}
 
-			repmgrd_info[i]->running = repmgrd_is_running(cell->node_info->conn);
 			repmgrd_info[i]->paused = repmgrd_is_paused(cell->node_info->conn);
 
 			PQfinish(cell->node_info->conn);
@@ -155,6 +174,8 @@ do_daemon_status(void)
 		headers_status[STATUS_NAME].cur_length = strlen(cell->node_info->node_name);
 		headers_status[STATUS_ROLE].cur_length = strlen(get_node_type_string(cell->node_info->type));
 		headers_status[STATUS_PID].cur_length = strlen(repmgrd_info[i]->pid_text);
+		headers_status[STATUS_RUNNING].cur_length = strlen(repmgrd_info[i]->repmgrd_running);
+		headers_status[STATUS_PG].cur_length = strlen(repmgrd_info[i]->pg_running);
 
 		for (j = 0; j < STATUS_HEADER_COUNT; j++)
 		{
@@ -186,9 +207,15 @@ do_daemon_status(void)
 			printf(" %-*i ",  headers_status[STATUS_ID].max_length, cell->node_info->node_id);
 			printf("| %-*s ", headers_status[STATUS_NAME].max_length, cell->node_info->node_name);
 			printf("| %-*s ", headers_status[STATUS_ROLE].max_length, get_node_type_string(cell->node_info->type));
-			printf("| %-*s ", headers_status[STATUS_RUNNING].max_length, repmgrd_info[i]->running ? "yes" : "no");
+
+			printf("| %-*s ", headers_status[STATUS_PG].max_length, repmgrd_info[i]->pg_running);
+			printf("| %-*s ", headers_status[STATUS_RUNNING].max_length, repmgrd_info[i]->repmgrd_running);
 			printf("| %-*s ", headers_status[STATUS_PID].max_length, repmgrd_info[i]->pid_text);
-			printf("| %-*s ", headers_status[STATUS_PAUSED].max_length, repmgrd_info[i]->paused ? "yes" : "no");
+
+			if (repmgrd_info[i]->pid == UNKNOWN_PID)
+				printf("| %-*s ", headers_status[STATUS_PAUSED].max_length, "n/a");
+			else
+				printf("| %-*s ", headers_status[STATUS_PAUSED].max_length, repmgrd_info[i]->paused ? "yes" : "no");
 		}
 		printf("\n");
 
