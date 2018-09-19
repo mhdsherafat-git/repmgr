@@ -2788,15 +2788,13 @@ do_standby_follow_internal(PGconn *primary_conn, t_node_info *primary_node_recor
 
 /*
  * Perform a switchover by:
+ *
  *  - stopping current primary node
  *  - promoting this standby node to primary
- *  - forcing previous primary node to follow this node
+ *  - forcing the previous primary node to follow this node
  *
- * Caveat:
- *  - repmgrd must not be running, otherwise it may
- *    attempt a failover
- *    (TODO: find some way of notifying repmgrd of planned
- *     activity like this)
+ * Where running and not already paused, repmgrd will be paused (and
+ * subsequently unpaused), unless --repmgrd-no-pause provided.
  *
  * TODO:
  *  - make connection test timeouts/intervals configurable (see below)
@@ -2853,6 +2851,11 @@ do_standby_switchover(void)
 	int			min_required_free_slots = 0;
 
 	t_event_info event_info = T_EVENT_INFO_INITIALIZER;
+
+	/* used for handling repmgrd pause/unpause */
+	NodeInfoList all_nodes = T_NODE_INFO_LIST_INITIALIZER;
+	RepmgrdInfo **repmgrd_info = NULL;
+	int			repmgrd_running_count = 0;
 
 	/*
 	 * SANITY CHECKS
@@ -2924,7 +2927,7 @@ do_standby_switchover(void)
 
 	if (record_status != RECORD_FOUND)
 	{
-		log_error(_("unable to retrieve node record for node %i"),
+		log_error(_("unable to retrieve node record for currentr primary (node %i)"),
 				  remote_node_id);
 
 		PQfinish(local_conn);
@@ -2934,11 +2937,11 @@ do_standby_switchover(void)
 	}
 
 	/*
-	 * Check that there's no exclusive backups running on the primary.
+	 * Check that there are no exclusive backups running on the primary.
 	 * We don't want to end up damaging the backup and also leaving the server in an
 	 * state where there's control data saying it's in backup mode but there's no
 	 * backup_label in PGDATA.
-	 * If the DBA wants to do the switchover anyway, he should first stop the
+	 * If the user wants to do the switchover anyway, they should first stop the
 	 * backup that's running.
 	 */
 	if (server_in_exclusive_backup_mode(remote_conn) != BACKUP_STATE_NO_BACKUP)
@@ -2980,6 +2983,7 @@ do_standby_switchover(void)
 	{
 		min_required_free_slots++;
 	}
+
 	/*
 	 * If --force-rewind specified, check pg_rewind can be used, and
 	 * pre-emptively fetch the list of configuration files which should be
@@ -3575,6 +3579,93 @@ do_standby_switchover(void)
 		}
 	}
 
+	/*
+	 * Attempt to pause all repmgrd instances, unless user explicitly
+	 * specifies not to.
+	 */
+	if (runtime_options.repmgrd_no_pause == false)
+	{
+		NodeInfoListCell *cell = NULL;
+		ItemList repmgrd_errors = {NULL, NULL};
+		ItemList repmgrd_warnings = {NULL, NULL};
+		int i = 0;
+
+		get_all_node_records(local_conn, &all_nodes);
+
+		repmgrd_info = (RepmgrdInfo **) pg_malloc0(sizeof(RepmgrdInfo *) * all_nodes.node_count);
+
+		// TODO: skip local node connection?
+		for (cell = all_nodes.head; cell; cell = cell->next)
+		{
+			cell->node_info->conn = establish_db_connection_quiet(cell->node_info->conninfo);
+
+			repmgrd_info[i] = pg_malloc0(sizeof(RepmgrdInfo));
+			repmgrd_info[i]->node_id = cell->node_info->node_id;
+			repmgrd_info[i]->pid = UNKNOWN_PID;
+			repmgrd_info[i]->paused = false;
+			repmgrd_info[i]->running = false;
+
+			if (PQstatus(cell->node_info->conn) != CONNECTION_OK)
+			{
+				repmgrd_info[i]->pg_running = false;
+				/*
+				 * unable to connect; treat this as an error
+				 */
+				// XXX implement
+				continue;
+			}
+
+			repmgrd_info[i]->running = repmgrd_is_running(cell->node_info->conn);
+			repmgrd_info[i]->pid = repmgrd_get_pid(cell->node_info->conn);
+			repmgrd_info[i]->paused = repmgrd_is_paused(cell->node_info->conn);
+
+			if (repmgrd_info[i]->running == true)
+				repmgrd_running_count++;
+
+			i++;
+		}
+
+		if (repmgrd_running_count > 0)
+		{
+			i = 0;
+			for (cell = all_nodes.head; cell; cell = cell->next)
+			{
+				/*
+				 * Skip if node is already paused. Note we won't unpause these, to
+				 * leave the repmgrd instances in the cluster in the same state they
+				 * were before the switchover.
+				 */
+				if (repmgrd_info[i]->paused == true)
+				{
+					PQfinish(cell->node_info->conn);
+					cell->node_info->conn = NULL;
+					i++;
+					continue;
+				}
+
+				if (runtime_options.dry_run == true)
+				{
+					log_info(_("would pause repmgrd on node %s (ID %i)"),
+							 cell->node_info->node_name,
+							 cell->node_info->node_id);
+				}
+				else
+				{
+					/* XXX check result  */
+					log_debug("pausing repmgrd on node %s (ID %i)",
+							 cell->node_info->node_name,
+							 cell->node_info->node_id);
+
+					(void) repmgrd_pause(cell->node_info->conn, true);
+				}
+
+				PQfinish(cell->node_info->conn);
+				cell->node_info->conn = NULL;
+				i++;
+			}
+		}
+
+	}
 
 	/*
 	 * Sanity checks completed - prepare for the switchover
@@ -3656,6 +3747,7 @@ do_standby_switchover(void)
 				 shutdown_command);
 
 		clear_node_info_list(&sibling_nodes);
+		clear_node_info_list(&all_nodes);
 		key_value_list_free(&remote_config_files);
 
 		return;
@@ -3793,7 +3885,7 @@ do_standby_switchover(void)
 
 
 	/*
-	 * if pg_rewind is requested, issue a checkpoint immediately after promoting
+	 * If pg_rewind is requested, issue a checkpoint immediately after promoting
 	 * the local node, as pg_rewind compares timelines on the basis of the value
 	 * in pg_control, which is written at the first checkpoint, which might not
 	 * occur immediately.
@@ -3805,7 +3897,7 @@ do_standby_switchover(void)
 	}
 
 	/*
-	 * Execute `repmgr node rejoin` to create recovery.conf and start the
+	 * Execute "repmgr node rejoin" to create recovery.conf and start the
 	 * remote server. Additionally execute "pg_rewind", if required and
 	 * requested.
 	 */
@@ -3997,11 +4089,13 @@ do_standby_switchover(void)
 
 	clear_node_info_list(&sibling_nodes);
 
+
+
 	PQfinish(local_conn);
 
 	/*
-	 * Clean up remote node. It's possible that the standby is still starting up,
-	 * so poll for a while until we get a connection.
+	 * Clean up remote node (primary demoted to standby). It's possible that the node is
+	 * still starting up, so poll for a while until we get a connection.
 	 */
 
 	for (i = 0; i < config_file_options.standby_reconnect_timeout; i++)
@@ -4053,6 +4147,45 @@ do_standby_switchover(void)
 
 	PQfinish(remote_conn);
 
+	/*
+	 * Attempt to unpause all paused repmgrd instances, unless user explicitly
+	 * specifies not to.
+	 */
+	if (runtime_options.repmgrd_no_pause == false)
+	{
+		int i = 0;
+
+		if (repmgrd_running_count > 0)
+		{
+			NodeInfoListCell *cell = NULL;
+			for (cell = all_nodes.head; cell; cell = cell->next)
+			{
+
+				if (repmgrd_info[i]->paused == true)
+				{
+					log_debug("repmgrd on node %s (ID %i) paused before switchover, not unpausing",
+							  cell->node_info->node_name,
+							  cell->node_info->node_id);
+
+					i++;
+					continue;
+				}
+				/* XXX check result  */
+				log_debug("unpausing repmgrd on node %s (ID %i)",
+						  cell->node_info->node_name,
+						  cell->node_info->node_id);
+
+				cell->node_info->conn = establish_db_connection_quiet(cell->node_info->conninfo);
+
+				(void) repmgrd_pause(cell->node_info->conn, false);
+
+				i++;
+			}
+		}
+
+		// XXX clear repmgrd_info
+		clear_node_info_list(&all_nodes);
+	}
 
 	if (switchover_success == true)
 	{

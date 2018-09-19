@@ -38,24 +38,11 @@ typedef enum
 	STATUS_RUNNING,
 	STATUS_PID,
 	STATUS_PAUSED
-}			StatusHeader;
+} StatusHeader;
 
 #define STATUS_HEADER_COUNT 7
 
 struct ColHeader headers_status[STATUS_HEADER_COUNT];
-
-typedef struct RepmgrdInfo {
-	int node_id;
-	int pid;
-	char pid_text[MAXLEN];
-	char pid_file[MAXLEN];
-	bool pg_running;
-	char pg_running_text[MAXLEN];
-	bool running;
-	char repmgrd_running[MAXLEN];
-	bool paused;
-} RepmgrdInfo;
-
 
 static void fetch_node_records(PGconn *conn, NodeInfoList *node_list);
 static void _do_repmgr_pause(bool pause);
@@ -331,7 +318,7 @@ _do_repmgr_pause(bool pause)
 
 
 
-static void
+void
 fetch_node_records(PGconn *conn, NodeInfoList *node_list)
 {
 	bool success = get_all_node_records(conn, node_list);

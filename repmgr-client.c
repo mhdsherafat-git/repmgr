@@ -444,6 +444,10 @@ main(int argc, char **argv)
 				runtime_options.siblings_follow = true;
 				break;
 
+			case OPT_REPMGRD_NO_PAUSE:
+				runtime_options.repmgrd_no_pause = true;
+				break;
+
 				/*----------------------
 				 * "node status" options
 				 *----------------------
@@ -3088,4 +3092,3 @@ drop_replication_slot_if_exists(PGconn *conn, int node_id, char *slot_name)
 		}
 	}
 }
-

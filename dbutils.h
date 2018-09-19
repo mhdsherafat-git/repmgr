@@ -327,6 +327,21 @@ typedef struct
     UNKNOWN_TIMELINE_ID, \
 	InvalidXLogRecPtr \
 }
+
+
+typedef struct RepmgrdInfo {
+	int node_id;
+	int pid;
+	char pid_text[MAXLEN];
+	char pid_file[MAXLEN];
+	bool pg_running;
+	char pg_running_text[MAXLEN];
+	bool running;
+	char repmgrd_running[MAXLEN];
+	bool paused;
+} RepmgrdInfo;
+
+
 /* global variables */
 
 extern int	server_version_num;
