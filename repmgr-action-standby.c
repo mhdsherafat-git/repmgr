@@ -3548,8 +3548,8 @@ do_standby_switchover(void)
 
 		log_debug("minimum of %i free slots (%i for siblings) required; %i available",
 				  min_required_free_slots,
-				  reachable_sibling_nodes_with_slot_count
-				  , available_slots);
+				  reachable_sibling_nodes_with_slot_count,
+				  available_slots);
 
 		if (available_slots < min_required_free_slots)
 		{
@@ -3586,15 +3586,14 @@ do_standby_switchover(void)
 	if (runtime_options.repmgrd_no_pause == false)
 	{
 		NodeInfoListCell *cell = NULL;
-		ItemList repmgrd_errors = {NULL, NULL};
-		ItemList repmgrd_warnings = {NULL, NULL};
+		ItemList repmgrd_connection_errors = {NULL, NULL};
 		int i = 0;
+		int unreachable_node_count = 0;
 
 		get_all_node_records(local_conn, &all_nodes);
 
 		repmgrd_info = (RepmgrdInfo **) pg_malloc0(sizeof(RepmgrdInfo *) * all_nodes.node_count);
 
-		// TODO: skip local node connection?
 		for (cell = all_nodes.head; cell; cell = cell->next)
 		{
 			cell->node_info->conn = establish_db_connection_quiet(cell->node_info->conninfo);
@@ -3607,11 +3606,18 @@ do_standby_switchover(void)
 
 			if (PQstatus(cell->node_info->conn) != CONNECTION_OK)
 			{
-				repmgrd_info[i]->pg_running = false;
 				/*
 				 * unable to connect; treat this as an error
 				 */
-				// XXX implement
+
+				repmgrd_info[i]->pg_running = false;
+
+				item_list_append_format(&repmgrd_connection_errors,
+										_("unable to connect to node \"%s\" (ID %i)"),
+										cell->node_info->node_name,
+										cell->node_info->node_id);
+
+				unreachable_node_count++;
 				continue;
 			}
 
@@ -3623,6 +3629,54 @@ do_standby_switchover(void)
 				repmgrd_running_count++;
 
 			i++;
+		}
+
+		if (unreachable_node_count > 0)
+		{
+			PQExpBufferData msg;
+			PQExpBufferData detail;
+			ItemListCell *cell;
+
+			initPQExpBuffer(&msg);
+			appendPQExpBuffer(&msg,
+							  _("unable to connect to %i node(s), unable to pause all repmgrd instances"),
+							  unreachable_node_count);
+
+			initPQExpBuffer(&detail);
+
+			for (cell = repmgrd_connection_errors.head; cell; cell = cell->next)
+			{
+				appendPQExpBuffer(&detail,
+								  "  %s\n",
+								  cell->string);
+			}
+
+
+			if (runtime_options.force == false)
+			{
+				log_error("%s", msg.data);
+			}
+			else
+			{
+				log_warning("%s", msg.data);
+			}
+
+			log_detail(_("following node(s) unreachable:\n%s"), detail.data);
+
+			termPQExpBuffer(&msg);
+			termPQExpBuffer(&detail);
+
+			/* tell user about footgun */
+			if (runtime_options.force == false)
+			{
+				log_hint(_("use -F/--force to continue anyway"));
+
+				clear_node_info_list(&sibling_nodes);
+				clear_node_info_list(&all_nodes);
+
+				exit(ERR_SWITCHOVER_FAIL);
+			}
+
 		}
 
 		if (repmgrd_running_count > 0)
@@ -3967,7 +4021,7 @@ do_standby_switchover(void)
 
 	if (command_success == false)
 	{
-		log_error(_("rejoin failed %i"), r);
+		log_error(_("rejoin failed with error code %i"), r);
 
 		create_event_notification_extended(local_conn,
 										   &config_file_options,
@@ -4153,11 +4207,13 @@ do_standby_switchover(void)
 	 */
 	if (runtime_options.repmgrd_no_pause == false)
 	{
-		int i = 0;
-
 		if (repmgrd_running_count > 0)
 		{
+			ItemList repmgrd_connection_errors = {NULL, NULL};
 			NodeInfoListCell *cell = NULL;
+			int i = 0;
+			int unreachable_node_count = 0;
+
 			for (cell = all_nodes.head; cell; cell = cell->next)
 			{
 
@@ -4177,13 +4233,43 @@ do_standby_switchover(void)
 
 				cell->node_info->conn = establish_db_connection_quiet(cell->node_info->conninfo);
 
-				(void) repmgrd_pause(cell->node_info->conn, false);
+				if (PQstatus(cell->node_info->conn) == CONNECTION_OK)
+				{
+					(void) repmgrd_pause(cell->node_info->conn, false);
+				}
+				else
+				{
+					item_list_append_format(&repmgrd_connection_errors,
+											_("unable to connect to node \"%s\" (ID %i)"),
+											cell->node_info->node_name,
+											cell->node_info->node_id);
+					unreachable_node_count++;
+				}
 
 				i++;
 			}
+
+			if (unreachable_node_count > 0)
+			{
+				PQExpBufferData detail;
+				ItemListCell *cell;
+
+				for (cell = repmgrd_connection_errors.head; cell; cell = cell->next)
+				{
+					appendPQExpBuffer(&detail,
+									  "  %s\n",
+									  cell->string);
+				}
+
+				log_warning(_("unable to connect to %i node(s), unable to unpause all repmgrd instances"),
+							unreachable_node_count);
+				log_detail(_("following node(s) unreachable:\n%s"), detail.data);
+				log_hint(_("check node connection and status; unpause manually with \"repmgr daemon unpause\""));
+
+				termPQExpBuffer(&detail);
+			}
 		}
 
-		// XXX clear repmgrd_info
 		clear_node_info_list(&all_nodes);
 	}
 
