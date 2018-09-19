@@ -1,0 +1,66 @@
+<refentry id="repmgr-daemon-pause">
+  <indexterm>
+    <primary>repmgr daemon pause</primary>
+  </indexterm>
+
+  <refmeta>
+    <refentrytitle>repmgr daemon pause</refentrytitle>
+  </refmeta>
+
+  <refnamediv>
+    <refname>repmgr daemon pause</refname>
+    <refpurpose>Instruct all <application>repmgrd</application> instances in the replication cluster to pause failover operations</refpurpose>
+  </refnamediv>
+
+  <refsect1>
+    <title>Description</title>
+    <para>
+      This command can be run on any active node in the replication cluster to instruct all
+      running <application>repmgrd</application> instances to &quot;pause&quot; themselves, i.e. take no
+      action (such as promoting themselves or following a new primary) if a failover event is detected.
+    </para>
+    <para>
+      This functionality is useful for performing maintenance operations, such as switchovers
+      or upgrades, which would otherwise trigger a failover.
+    </para>
+    <note>
+      <para>
+        It's important to wait a few seconds after restarting PostgreSQL on any node before running
+        <command>repmgr daemon pause</command>, as the <application>repmgrd</application> instance
+        on the restarted node will take a second or two before it has updated its status.
+      </para>
+    </note>
+    <para>
+      <xref linkend="repmgr-daemon-unpause"> will instruct all previously paused to resume normal
+      failover operation.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Execution</title>
+    <para>
+      <command>repmgr daemon pause</command> can be executed on any active node in the
+      replication cluster. A valid <filename>repmgr.conf</filename> file is required.
+      It will have no effect on previously paused nodes.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Example</title>
+    <para>
+    <programlisting>
+$ repmgr -f /etc/repmgr.conf daemon pause
+NOTICE: node 1 (node1) paused
+NOTICE: node 2 (node2) paused
+NOTICE: node 3 (node3) paused</programlisting>
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>See also</title>
+    <para>
+      <xref linkend="repmgr-daemon-unpause">, <xref linkend="repmgr-daemon-status">
+    </para>
+  </refsect1>
+</refentry>
+
