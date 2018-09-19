@@ -3965,6 +3965,7 @@ do_standby_switchover(void)
 		{
 			log_error(_("new primary diverges from former primary and --force-rewind not provided"));
 			log_hint(_("the former primary will need to be restored manually, or use \"repmgr node rejoin\""));
+
 			termPQExpBuffer(&node_rejoin_options);
 			PQfinish(local_conn);
 			exit(ERR_SWITCHOVER_FAIL);
@@ -6821,6 +6822,7 @@ do_standby_help(void)
 	printf(_("                                        (9.3 and 9.4 - provide \"pg_rewind\" path)\n"));
 
 	printf(_("  -R, --remote-user=USERNAME          database server username for SSH operations (default: \"%s\")\n"), runtime_options.username);
+	printf(_("  --repmgrd-no-pause                  don't pause repmgrd\n"));
 	printf(_("  --siblings-follow                   have other standbys follow new primary\n"));
 
 	puts("");

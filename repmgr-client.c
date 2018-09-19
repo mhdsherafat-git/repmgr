@@ -1779,6 +1779,18 @@ check_cli_parameters(const int action)
 		}
 	}
 
+	if (runtime_options.repmgrd_no_pause == true)
+	{
+		switch (action)
+		{
+			case STANDBY_SWITCHOVER:
+				break;
+			default:
+				item_list_append_format(&cli_warnings,
+										_("--repmgrd-no-pause will be ignored when executing %s"),
+										action_name(action));
+		}
+	}
 
 	if (runtime_options.config_files[0] != '\0')
 	{
