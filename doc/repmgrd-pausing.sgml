@@ -5,6 +5,10 @@
     <secondary>pausing</secondary>
   </indexterm>
 
+  <indexterm>
+    <primary>pausing repmgrd</primary>
+  </indexterm>
+
   <title>Pausing repmgrd</title>
 
   <para>
@@ -127,7 +131,9 @@ NOTICE: node 3 (node3) unpaused</programlisting>
       <para>
         If the previous primary is no longer accessible when <application>repmgrd</application>
         is unpaused, no failover action will be taken. Instead, a new primary must be manually promoted using
-        <link linkend="repmgr-standby-promote"><command>repmgr standby-promote</command></link>.
+        <link linkend="repmgr-standby-promote"><command>repmgr standby promote</command></link>,
+		and any standbys attached to the new primary with
+		<link linkend="repmgr-standby-follow"><command>repmgr standby follow</command></link>.
       </para>
       <para>
         This is to prevent <link linkend="repmgr-daemon-unpause"><command>repmgr daemon unpause</command></link>
