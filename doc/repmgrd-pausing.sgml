@@ -83,6 +83,14 @@ NOTICE: node 3 (node3) paused</programlisting>
  2  | node2 | standby | running | running | 7889 | yes
  3  | node3 | standby | running | running | 7918 | yes</programlisting>
     </para>
+
+    <note>
+      <para>
+        If executing a switchover with  <link linkend="repmgr-standby-switchover"><command>repmgr standby switchover</command></link>,
+		&repmgr; will automatically pause/unpause <application>repmgrd</application> as part of the switchover process.
+      </para>
+    </note>
+
     <para>
       If the primary (in this example, <literal>node1</literal>) is stopped, <application>repmgrd</application>
       running on one of the standbys (here: <literal>node2</literal>) will react like this:
@@ -99,6 +107,13 @@ NOTICE: node 3 (node3) paused</programlisting>
 [2018-09-20 12:22:33] [DETAIL] repmgrd paused by administrator
 [2018-09-20 12:22:33] [HINT] execute "repmgr daemon unpause" to resume normal failover mode</programlisting>
     </para>
+    <para>
+      If the primary becomes available again (e.g. following a software upgrade), <application>repmgrd</application>
+      will automatically reconnect, e.g.:
+      <programlisting>
+[2018-09-20 13:12:41] [NOTICE] reconnected to upstream node 1 after 8 seconds, resuming monitoring</programlisting>
+    </para>
+
     <para>
       To unpause <application>repmgrd</application>, execute <link linkend="repmgr-daemon-unpause"><command>repmgr daemon unpause</command></link>, e.g.:
    <programlisting>
@@ -122,18 +137,27 @@ NOTICE: node 3 (node3) unpaused</programlisting>
       </para>
     </note>
 
+  <sect2 id="repmgrd-pausing-details">
+    <title>Details on the <application>repmgrd</application> pausing mechanism</title>
 
+    <para>
+      The pause state of each node will be stored over a PostgreSQL restart.
+    </para>
 
+	<para>
+	  <link linkend="repmgr-daemon-pause"><command>repmgr daemon pause</command></link> and
+	  <link linkend="repmgr-daemon-unpause"><command>repmgr daemon unpause</command></link> can be
+	  executed even if <application>repmgrd</application> is not running; in this case,
+	  <application>repmgrd</application> will start up in whichever pause state has been set.
+	</para>
     <note>
       <para>
-        does not stop/start repmgrd
+		<link linkend="repmgr-daemon-pause"><command>repmgr daemon pause</command></link> and
+		<link linkend="repmgr-daemon-unpause"><command>repmgr daemon unpause</command></link>
+		<emphasis>do not</emphasis> stop/start <application>repmgrd</application>.
       </para>
     </note>
-
-  <para>
-    functions
-  </para>
-
+  </sect2>
   </sect1>
 </chapter>
 
