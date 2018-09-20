@@ -58,14 +58,6 @@ do_daemon_status(void)
 	RepmgrdInfo **repmgrd_info;
 	ItemList	warnings = {NULL, NULL};
 
-	repmgrd_info = (RepmgrdInfo **) pg_malloc0(sizeof(RepmgrdInfo *) * nodes.node_count);
-
-	if (repmgrd_info == NULL)
-	{
-		log_error(_("unable to allocate memory"));
-		exit(ERR_OUT_OF_MEMORY);
-	}
-
 	/* Connect to local database to obtain cluster connection data */
 	log_verbose(LOG_INFO, _("connecting to database"));
 
@@ -75,6 +67,14 @@ do_daemon_status(void)
 		conn = establish_db_connection_by_params(&source_conninfo, true);
 
 	fetch_node_records(conn, &nodes);
+
+	repmgrd_info = (RepmgrdInfo **) pg_malloc0(sizeof(RepmgrdInfo *) * nodes.node_count);
+
+	if (repmgrd_info == NULL)
+	{
+		log_error(_("unable to allocate memory"));
+		exit(ERR_OUT_OF_MEMORY);
+	}
 
 	strncpy(headers_status[STATUS_ID].title, _("ID"), MAXLEN);
 	strncpy(headers_status[STATUS_NAME].title, _("Name"), MAXLEN);
@@ -106,7 +106,6 @@ do_daemon_status(void)
 
 		if (PQstatus(cell->node_info->conn) != CONNECTION_OK)
 		{
-
 			if (runtime_options.verbose)
 			{
 				char		error[MAXLEN];
