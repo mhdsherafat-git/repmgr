@@ -345,9 +345,29 @@ void do_daemon_help(void)
 	print_help_header();
 
 	printf(_("Usage:\n"));
-	printf(_("    %s [OPTIONS] daemon status\n"), progname());
-	printf(_("    %s [OPTIONS] daemon pause\n"), progname());
+	printf(_("    %s [OPTIONS] daemon status\n"),  progname());
+	printf(_("    %s [OPTIONS] daemon pause\n"),   progname());
 	printf(_("    %s [OPTIONS] daemon unpause\n"), progname());
+	puts("");
+
+	printf(_("DAEMON STATUS\n"));
+	puts("");
+	printf(_("  \"daemon status\" shows the status of repmgrd on each node in the cluster\n"));
+	puts("");
+	printf(_("    --csv                     emit output as CSV\n"));
+	printf(_("    --verbose                 show text of database connection error messages\n"));
+	puts("");
+
+	printf(_("DAEMON PAUSE\n"));
+	puts("");
+	printf(_("  \"daemon pause\" instructs repmgrd on each node to pause failover detection\n"));
+	puts("");
+
+	printf(_("DAEMON PAUSE\n"));
+	puts("");
+	printf(_("  \"daemon unpause\"  instructs repmgrd on each node to resume failover detection\n"));
+	puts("");
+
 
 	puts("");
 }
