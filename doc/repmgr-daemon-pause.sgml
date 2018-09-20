@@ -21,7 +21,8 @@
     </para>
     <para>
       This functionality is useful for performing maintenance operations, such as switchovers
-      or upgrades, which would otherwise trigger a failover.
+      or upgrades, which might otherwise trigger a failover if <application>repmgrd</application>
+      is running normally.
     </para>
     <note>
       <para>
@@ -31,8 +32,8 @@
       </para>
     </note>
     <para>
-      <xref linkend="repmgr-daemon-unpause"> will instruct all previously paused to resume normal
-      failover operation.
+      <xref linkend="repmgr-daemon-unpause"> will instruct all previously paused <application>repmgrd</application>
+      instances to resume normal failover operation.
     </para>
   </refsect1>
 

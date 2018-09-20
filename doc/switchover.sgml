@@ -19,9 +19,10 @@
  </para>
  <para>
   <command>repmgr standby switchover</command> differs from other &repmgr;
-  actions in that it also performs actions on another server (the demotion
-  candidate), which means passwordless SSH access is required to that server
-  from the one where <command>repmgr standby switchover</command> is executed.
+  actions in that it also performs actions on other servers (the demotion
+  candidate, and optionally any other servers which are to follow the new primary),
+  which means passwordless SSH access is required to those servers from the one where
+  <command>repmgr standby switchover</command> is executed.
  </para>
  <note>
   <simpara>
@@ -152,14 +153,6 @@
     &repmgr; will emit a warning before attempting to perform a switchover; you can also check
     manually with <command>repmgr node check --archive-ready</command>.
    </para>
-
-   <note>
-     <para>
-       Ensure that <application>repmgrd</application> is *not* running anywhere to prevent it unintentionally
-       promoting a node. This restriction will be removed in a future &repmgr; version.
-     </para>
-   </note>
-
 
    <para>
     Finally, consider executing <command>repmgr standby switchover</command> with the

@@ -86,6 +86,7 @@
   &repmgrd-cascading-replication;
   &repmgrd-network-split;
   &repmgrd-witness-server;
+  &repmgrd-pausing;
   &repmgrd-degraded-monitoring;
   &repmgrd-monitoring;
   &repmgrd-bdr;

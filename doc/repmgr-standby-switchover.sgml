@@ -47,7 +47,7 @@
 
     <note>
       <para>
-        From <link linkend="repmgr-4.2">repmgr 4.2</link>, &repmgr; will instruct any running
+        From <link linkend="release-4.2">repmgr 4.2</link>, &repmgr; will instruct any running
         <application>repmgrd</application> instances to pause operations while the switchover
         is being carried out, to prevent <application>repmgrd</application> from
         unintentionally promoting a node.
