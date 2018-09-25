@@ -322,17 +322,7 @@
       for details.
      </simpara>
     </listitem>
-    <listitem>
-     <simpara>
-      <application>repmgrd</application> should not be running with setting <varname>failover=automatic</varname>
-      in <filename>repmgr.conf</filename> when a switchover is carried out, otherwise the
-      <application>repmgrd</application> daemon may try and promote a standby by itself.
-     </simpara>
-    </listitem>
    </itemizedlist>
-  </para>
-  <para>
-   We hope to remove some of these restrictions in future versions of &repmgr;.
   </para>
  </sect1>
 </chapter>
