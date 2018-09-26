@@ -154,6 +154,20 @@
     manually with <command>repmgr node check --archive-ready</command>.
    </para>
 
+    <note>
+      <para>
+        From <link linkend="release-4.2">repmgr 4.2</link>, &repmgr; will instruct any running
+        <application>repmgrd</application> instances to pause operations while the switchover
+        is being carried out, to prevent <application>repmgrd</application> from
+        unintentionally promoting a node. For more details, see <xref linkend="repmgrd-pausing">.
+      </para>
+      <para>
+        Users of &repmgr; versions prior to 4.2 should ensure that <application>repmgrd</application>
+        is not running on any nodes while a switchover is being executed.
+      </para>
+    </note>
+
+
    <para>
     Finally, consider executing <command>repmgr standby switchover</command> with the
     <literal>--dry-run</literal> option; this will perform any necessary checks and inform you about
@@ -296,7 +310,21 @@
      2  | node2 | primary | * running |          | default  | host=node2 dbname=repmgr user=repmgr
    </programlisting>
   </para>
+  <para>
+    If <application>repmgrd</application> is in use, it's worth double-checking that
+    all nodes are unpaused by executing <command><link linkend="repmgr-daemon-status">repmgr-daemon-status</link></command>.
+  </para>
+
+   <note>
+     <para>
+       Users of &repmgr; versions prior to 4.2 will need to manually restart <application>repmgrd</application>
+       on all nodes after the switchover is completed.
+     </para>
+    </note>
+
  </sect1>
+
+
  <sect1 id="switchover-caveats" xreflabel="Caveats">
   <indexterm>
    <primary>switchover</primary>
