@@ -4210,10 +4210,10 @@ do_standby_switchover(void)
 	{
 		if (repmgrd_running_count > 0)
 		{
-			ItemList repmgrd_connection_errors = {NULL, NULL};
+			ItemList repmgrd_unpause_errors = {NULL, NULL};
 			NodeInfoListCell *cell = NULL;
 			int i = 0;
-			int unreachable_node_count = 0;
+			int error_node_count = 0;
 
 			for (cell = all_nodes.head; cell; cell = cell->next)
 			{
@@ -4227,7 +4227,7 @@ do_standby_switchover(void)
 					i++;
 					continue;
 				}
-				/* XXX check result  */
+
 				log_debug("unpausing repmgrd on node %s (ID %i)",
 						  cell->node_info->node_name,
 						  cell->node_info->node_id);
@@ -4236,39 +4236,48 @@ do_standby_switchover(void)
 
 				if (PQstatus(cell->node_info->conn) == CONNECTION_OK)
 				{
-					(void) repmgrd_pause(cell->node_info->conn, false);
+					if (repmgrd_pause(cell->node_info->conn, false) == false)
+					{
+						item_list_append_format(&repmgrd_unpause_errors,
+												_("unable to unpause node \"%s\" (ID %i)"),
+												cell->node_info->node_name,
+												cell->node_info->node_id);
+						error_node_count++;
+					}
 				}
 				else
 				{
-					item_list_append_format(&repmgrd_connection_errors,
+					item_list_append_format(&repmgrd_unpause_errors,
 											_("unable to connect to node \"%s\" (ID %i)"),
 											cell->node_info->node_name,
 											cell->node_info->node_id);
-					unreachable_node_count++;
+					error_node_count++;
 				}
 
 				i++;
 			}
 
-			if (unreachable_node_count > 0)
+			if (error_node_count > 0)
 			{
 				PQExpBufferData detail;
 				ItemListCell *cell;
 
-				for (cell = repmgrd_connection_errors.head; cell; cell = cell->next)
+				for (cell = repmgrd_unpause_errors.head; cell; cell = cell->next)
 				{
 					appendPQExpBuffer(&detail,
 									  "  %s\n",
 									  cell->string);
 				}
 
-				log_warning(_("unable to connect to %i node(s), unable to unpause all repmgrd instances"),
-							unreachable_node_count);
-				log_detail(_("following node(s) unreachable:\n%s"), detail.data);
+				log_warning(_("unable to unpause repmgrd on %i node(s)"),
+							error_node_count);
+				log_detail(_("errors encountered for following node(s):\n%s"), detail.data);
 				log_hint(_("check node connection and status; unpause manually with \"repmgr daemon unpause\""));
 
 				termPQExpBuffer(&detail);
 			}
+
+
 		}
 
 		clear_node_info_list(&all_nodes);
