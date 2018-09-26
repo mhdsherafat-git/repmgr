@@ -4276,8 +4276,6 @@ do_standby_switchover(void)
 
 				termPQExpBuffer(&detail);
 			}
-
-
 		}
 
 		clear_node_info_list(&all_nodes);

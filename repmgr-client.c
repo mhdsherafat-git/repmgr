@@ -1819,6 +1819,8 @@ check_cli_parameters(const int action)
 			case WITNESS_UNREGISTER:
 			case NODE_REJOIN:
 			case NODE_SERVICE:
+			case DAEMON_PAUSE:
+			case DAEMON_UNPAUSE:
 				break;
 			default:
 				item_list_append_format(&cli_warnings,
@@ -1898,6 +1900,14 @@ action_name(const int action)
 			return "CLUSTER MATRIX";
 		case CLUSTER_CROSSCHECK:
 			return "CLUSTER CROSSCHECK";
+
+		case DAEMON_STATUS:
+			return "DAEMON STATUS";
+		case DAEMON_PAUSE:
+			return "DAEMON PAUSE";
+		case DAEMON_UNPAUSE:
+			return "DAEMON UNPAUSE";
+
 	}
 
 	return "UNKNOWN ACTION";

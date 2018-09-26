@@ -25,9 +25,13 @@
 
 
 
-// repmgrd start time?
-// repmgrd mode
-// priority
+/*
+ * Possibly also show:
+ *  - repmgrd start time?
+ *  - repmgrd mode
+ *  - priority
+ *  - whether promotion candidate (due to zero priority/different location)
+ */
 
 typedef enum
 {
@@ -262,6 +266,7 @@ _do_repmgr_pause(bool pause)
 	NodeInfoListCell *cell = NULL;
 	RepmgrdInfo **repmgrd_info;
 	int i;
+	int error_nodes = 0;
 
 	repmgrd_info = (RepmgrdInfo **) pg_malloc0(sizeof(RepmgrdInfo *) * nodes.node_count);
 
@@ -285,8 +290,6 @@ _do_repmgr_pause(bool pause)
 
 	for (cell = nodes.head; cell; cell = cell->next)
 	{
-		bool success;
-
 		repmgrd_info[i] = pg_malloc0(sizeof(RepmgrdInfo));
 		repmgrd_info[i]->node_id = cell->node_info->node_id;
 
@@ -299,20 +302,61 @@ _do_repmgr_pause(bool pause)
 		{
 			log_warning(_("unable to connect to node %i"),
 						cell->node_info->node_id);
+			error_nodes++;
 		}
 		else
 		{
-			success = repmgrd_pause(cell->node_info->conn, pause);
-			log_notice(_("node %i (%s) %s"),
-					   cell->node_info->node_id,
-					   cell->node_info->node_name,
-					   success == true
-					   	   ? pause == true ? "paused" : "unpaused"
-					   	   : pause == true ? "not paused" : "not unpaused");
+			if (runtime_options.dry_run == true)
+			{
+				if (pause == true)
+				{
+					log_info(_("would pause node %i (%s) "),
+							 cell->node_info->node_id,
+							 cell->node_info->node_name);
+				}
+				else
+				{
+					log_info(_("would unpause node %i (%s) "),
+							 cell->node_info->node_id,
+							 cell->node_info->node_name);
+				}
+			}
+			else
+			{
+				bool success = repmgrd_pause(cell->node_info->conn, pause);
+
+				if (success == false)
+					error_nodes++;
+
+				log_notice(_("node %i (%s) %s"),
+						   cell->node_info->node_id,
+						   cell->node_info->node_name,
+						   success == true
+								? pause == true ? "paused" : "unpaused"
+		   						: pause == true ? "not paused" : "not unpaused");
+			}
 			PQfinish(cell->node_info->conn);
 		}
 		i++;
 	}
+
+	if (error_nodes > 0)
+	{
+		if (pause == true)
+		{
+			log_error(_("unable to pause %i node(s)"), error_nodes);
+		}
+		else
+		{
+			log_error(_("unable to unpause %i node(s)"), error_nodes);
+		}
+
+		log_hint(_("execute \"repmgr daemon status\" to view current status"));
+
+		exit(ERR_REPMGRD_PAUSE);
+	}
+
+	exit(SUCCESS);
 }
 
 
@@ -361,10 +405,14 @@ void do_daemon_help(void)
 	puts("");
 	printf(_("  \"daemon pause\" instructs repmgrd on each node to pause failover detection\n"));
 	puts("");
+	printf(_("    --dry-run               check if nodes are reachable but don't pause repmgrd\n"));
+	puts("");
 
 	printf(_("DAEMON PAUSE\n"));
 	puts("");
 	printf(_("  \"daemon unpause\"  instructs repmgrd on each node to resume failover detection\n"));
+	puts("");
+	printf(_("    --dry-run               check if nodes are reachable but don't unpause repmgrd\n"));
 	puts("");
 
 
