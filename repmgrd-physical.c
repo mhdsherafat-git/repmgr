@@ -806,7 +806,9 @@ monitor_streaming_standby(void)
 
 					if (PQstatus(local_conn) == CONNECTION_OK && repmgrd_is_paused(local_conn))
 					{
-						log_notice("node is paused");
+						log_notice(_("repmgrd on this node is paused"));
+						log_detail(_("no failover will be carried out"));
+						log_hint(_("execute \"repmgr daemon unpause\" to resume normal failover mode"));
 						monitoring_state = MS_DEGRADED;
 						INSTR_TIME_SET_CURRENT(degraded_monitoring_start);
 					}
