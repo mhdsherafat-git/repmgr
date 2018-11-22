@@ -2443,10 +2443,9 @@ do_standby_follow(void)
 	 */
 	checkpoint(local_conn);
 
-	PQfinish(local_conn);
-
 	/*
-	 * Compare stuff
+	 * Here we'll perform some sanity checks to ensure the follow target
+	 * can actually be followed.
 	 */
 
 	{
@@ -2459,6 +2458,7 @@ do_standby_follow(void)
 					local_timeline,
 					primary_identification.timeline);
 
+		/* upstream's primary is lower than ours - impossible case */
 		if (primary_identification.timeline < local_timeline)
 		{
 			log_error(_("this node's timeline is ahead of the primary's timeline"));
@@ -2468,19 +2468,55 @@ do_standby_follow(void)
 
 			PQfinish(primary_conn);
 			PQfinish(repl_conn);
+			PQfinish(local_conn);
 			exit(ERR_FOLLOW_FAIL);
 		}
 
-		// XXX check same timeline!
-
-		if (primary_identification.timeline > local_timeline)
+		if (primary_identification.timeline == local_timeline)
 		{
+			XLogRecPtr local_xlogpos = get_current_lsn(local_conn);
+			XLogRecPtr follow_target_xlogpos = get_current_lsn(primary_conn);
+
+			if (local_xlogpos == InvalidXLogRecPtr || follow_target_xlogpos  == InvalidXLogRecPtr)
+			{
+				log_error(_("unable to compare LSN positions"));
+				PQfinish(primary_conn);
+				PQfinish(repl_conn);
+				PQfinish(local_conn);
+				exit(ERR_FOLLOW_FAIL);
+			}
+
+			/* timeline is the same - check relative positions */
+			if (local_xlogpos <= follow_target_xlogpos)
+			{
+				log_info(_("timelines are same, this server is not ahead"));
+				log_detail(_("local node lsn is %X/%X, follow target lsn is %X/%X"),
+						   format_lsn(local_xlogpos),
+						   format_lsn(follow_target_xlogpos));
+			}
+			else
+			{
+				log_error(_("this node is ahead of the follow target"));
+				log_detail(_("local node lsn is %X/%X, follow target lsn is %X/%X"),
+						   format_lsn(local_xlogpos),
+						   format_lsn(follow_target_xlogpos));
+				PQfinish(primary_conn);
+				PQfinish(repl_conn);
+				PQfinish(local_conn);
+				exit(ERR_FOLLOW_FAIL);
+			}
+
+		}
+		else
+		{
+			/* upstream has higher timeline - check where it forked off from this node's timeline */
 			upstream_history = get_timeline_history(repl_conn, local_timeline + 1);
 
 			if (upstream_history == NULL)
 			{
 				PQfinish(primary_conn);
 				PQfinish(repl_conn);
+				PQfinish(local_conn);
 				exit(ERR_FOLLOW_FAIL);
 			}
 			log_debug("upstream tli: %i; branch LSN: %X/%X",
@@ -2494,10 +2530,13 @@ do_standby_follow(void)
 						   local_timeline + 1, local_timeline, format_lsn(min_recovery_location));
 				PQfinish(primary_conn);
 				PQfinish(repl_conn);
+				PQfinish(local_conn);
 				exit(ERR_FOLLOW_FAIL);
 			}
 		}
 	}
+
+	PQfinish(local_conn);
 
 	PQfinish(repl_conn);
 	free_conninfo_params(&repl_conninfo);
