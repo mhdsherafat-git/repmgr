@@ -2453,6 +2453,7 @@ do_standby_follow(void)
 		/* check timelines */
 
 		TimeLineID local_timeline = get_timeline(config_file_options.data_directory);
+		XLogRecPtr min_recovery_location = get_min_recovery_location(config_file_options.data_directory);
 
 		log_verbose(LOG_DEBUG, "local timeline: %i; upstream timeline: %i",
 					local_timeline,
@@ -2470,16 +2471,33 @@ do_standby_follow(void)
 			exit(ERR_FOLLOW_FAIL);
 		}
 
-		upstream_history = get_timeline_history(repl_conn, local_timeline + 1);
-		log_debug("upstream tli: %i; branch LSN: %X/%X",
-				  upstream_history->tli, format_lsn(upstream_history->end));
+		// XXX check same timeline!
 
-		
+		if (primary_identification.timeline > local_timeline)
+		{
+			upstream_history = get_timeline_history(repl_conn, local_timeline + 1);
+
+			if (upstream_history == NULL)
+			{
+				PQfinish(primary_conn);
+				PQfinish(repl_conn);
+				exit(ERR_FOLLOW_FAIL);
+			}
+			log_debug("upstream tli: %i; branch LSN: %X/%X",
+					  upstream_history->tli, format_lsn(upstream_history->end));
+
+			if (upstream_history->end < min_recovery_location)
+			{
+				log_error(_("this node cannot attach to upstream node %i"),
+						  primary_node_id);
+				log_detail(_("upstream server's timeline %i forked off current database system timeline %i before current recovery point %X/%X\n"),
+						   local_timeline + 1, local_timeline, format_lsn(min_recovery_location));
+				PQfinish(primary_conn);
+				PQfinish(repl_conn);
+				exit(ERR_FOLLOW_FAIL);
+			}
+		}
 	}
-
-	// if upstream > local
-	// get history file from upstream
-	// (
 
 	PQfinish(repl_conn);
 	free_conninfo_params(&repl_conninfo);
