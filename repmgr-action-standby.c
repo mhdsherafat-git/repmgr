@@ -55,7 +55,7 @@ static bool local_data_directory_provided = false;
 
 static bool upstream_conninfo_found = false;
 static int	upstream_node_id = UNKNOWN_NODE_ID;
-static char upstream_data_directory[MAXPGPATH];
+static char upstream_data_directory[MAXPGPATH] = "";
 
 static t_conninfo_param_list recovery_conninfo = T_CONNINFO_PARAM_LIST_INITIALIZER;
 static char recovery_conninfo_str[MAXLEN] = "";
@@ -69,8 +69,8 @@ static t_configfile_list config_files = T_CONFIGFILE_LIST_INITIALIZER;
 static standy_clone_mode mode = pg_basebackup;
 
 /* used by barman mode */
-static char local_repmgr_tmp_directory[MAXPGPATH];
-static char datadir_list_filename[MAXLEN];
+static char local_repmgr_tmp_directory[MAXPGPATH] = "";
+static char datadir_list_filename[MAXLEN] = "";
 static char barman_command_buf[MAXLEN] = "";
 
 static void _do_standby_promote_internal(PGconn *conn, int server_version_num);
@@ -2204,6 +2204,7 @@ do_standby_follow(void)
 	t_conninfo_param_list repl_conninfo = T_CONNINFO_PARAM_LIST_INITIALIZER;
 	PGconn	   *repl_conn = NULL;
 	t_system_identification primary_identification = T_SYSTEM_IDENTIFICATION_INITIALIZER;
+	TimeLineHistoryEntry *upstream_history = NULL;
 
 	log_verbose(LOG_DEBUG, "do_standby_follow()");
 
@@ -2245,7 +2246,6 @@ do_standby_follow(void)
 		sleep(1);
 	}
 
-	PQfinish(local_conn);
 
 	if (PQstatus(primary_conn) != CONNECTION_OK)
 	{
@@ -2258,6 +2258,7 @@ do_standby_follow(void)
 			log_hint(_("alter \"primary_follow_timeout\" in \"repmgr.conf\" to change this value"));
 		}
 
+		PQfinish(local_conn);
 		exit(ERR_FOLLOW_FAIL);
 	}
 
@@ -2308,21 +2309,25 @@ do_standby_follow(void)
 		int free_slots = get_free_replication_slot_count(primary_conn);
 		if (free_slots < 0)
 		{
-			log_error(_("unable to determine number of free replication slots on the primary"));
+			log_error(_("unable to determine number of free replication slots on node %i"),
+					  primary_node_id);
 			PQfinish(primary_conn);
+			PQfinish(local_conn);
 			exit(ERR_FOLLOW_FAIL);
 		}
 
 		if (free_slots == 0)
 		{
-			log_error(_("no free replication slots available on the primary"));
+			log_error(_("no free replication slots available on node %i"), primary_node_id);
 			log_hint(_("consider increasing \"max_replication_slots\""));
 			PQfinish(primary_conn);
+			PQfinish(local_conn);
 			exit(ERR_FOLLOW_FAIL);
 		}
 		else if (runtime_options.dry_run == true)
 		{
-			log_info(_("replication slots in use, %i free slots on the primary"),
+			log_info(_("replication slots in use, %i free slots on node %i"),
+					 primary_node_id,
 					 free_slots);
 		}
 
@@ -2339,13 +2344,16 @@ do_standby_follow(void)
 		param_set(&repl_conninfo, "user", primary_node_record.repluser);
 		param_set(&repl_conninfo, "dbname", "replication");
 	}
+
 	param_set(&repl_conninfo, "replication", "1");
 
 	repl_conn = establish_db_connection_by_params(&repl_conninfo, false);
+
 	if (PQstatus(repl_conn) != CONNECTION_OK)
 	{
 		log_error(_("unable to establish a replication connection to the primary node"));
 		PQfinish(primary_conn);
+
 		exit(ERR_FOLLOW_FAIL);
 	}
 	else if (runtime_options.dry_run == true)
@@ -2382,10 +2390,54 @@ do_standby_follow(void)
 		log_detail(_("system identifier is %lu"), local_system_identifier);
 	}
 
-	/* TODO: check timelines */
+
+	/*
+	 * Execute CHECKPOINT on the local node - we'll need this to update
+	 * the pg_control file so we can compare positions with the new upstream
+	 */
+	checkpoint(local_conn);
+
+	PQfinish(local_conn);
+
+	/*
+	 * Compare stuff
+	 */
+
+	{
+		/* check timelines */
+
+		TimeLineID local_timeline = get_timeline(config_file_options.data_directory);
+
+		log_verbose(LOG_DEBUG, "local timeline: %i; upstream timeline: %i",
+					local_timeline,
+					primary_identification.timeline);
+
+		if (primary_identification.timeline < local_timeline)
+		{
+			log_error(_("this node's timeline is ahead of the primary's timeline"));
+			log_detail(_("this node's timeline is %i, primary node's timeline is %i"),
+					   local_timeline,
+					   primary_identification.timeline);
+
+			PQfinish(primary_conn);
+			PQfinish(repl_conn);
+			exit(ERR_FOLLOW_FAIL);
+		}
+
+		upstream_history = get_timeline_history(repl_conn, local_timeline + 1);
+		log_debug("upstream tli: %i; branch LSN: %X/%X",
+				  upstream_history->tli, format_lsn(upstream_history->end));
+
+		
+	}
+
+	// if upstream > local
+	// get history file from upstream
+	// (
 
 	PQfinish(repl_conn);
 	free_conninfo_params(&repl_conninfo);
+
 
 	if (runtime_options.dry_run == true)
 	{
