@@ -2186,9 +2186,13 @@ do_standby_follow(void)
 {
 	PGconn	   *local_conn = NULL;
 
-	PGconn	   *primary_conn = NULL;
-	int			primary_node_id = UNKNOWN_NODE_ID;
-	t_node_info primary_node_record = T_NODE_INFO_INITIALIZER;
+	//PGconn	   *primary_conn = NULL; //int			primary_node_id = UNKNOWN_NODE_ID;
+
+	PGconn	   *follow_target_conn = NULL;
+	int			follow_target_node_id = UNKNOWN_NODE_ID;
+	t_node_info follow_target_node_record = T_NODE_INFO_INITIALIZER;
+	bool		follow_target_is_primary = true;
+
 	RecordStatus record_status = RECORD_NOT_FOUND;
 	/* so we can pass info about the primary to event notification scripts */
 	t_event_info event_info = T_EVENT_INFO_INITIALIZER;
@@ -2225,8 +2229,7 @@ do_standby_follow(void)
 		check_93_config();
 
 	/*
-	 * --upstream-node-id provided; assume that is the desired primary
-	 * and retrieve its record. We'll check if it's actualy a primary later.
+	 * --upstream-node-id provided - attempt to follow that node
 	 */
 	if (runtime_options.upstream_node_id != UNKNOWN_NODE_ID)
 	{
@@ -2238,8 +2241,8 @@ do_standby_follow(void)
 			exit(ERR_FOLLOW_FAIL);
 		}
 
-		primary_node_id = runtime_options.upstream_node_id;
-		record_status = get_node_record(local_conn, primary_node_id, &primary_node_record);
+		follow_target_node_id = runtime_options.upstream_node_id;
+		record_status = get_node_record(local_conn, follow_target_node_id, &follow_target_node_record);
 
 		if (record_status != RECORD_FOUND)
 		{
@@ -2251,25 +2254,27 @@ do_standby_follow(void)
 	}
 
 	/*
-	 * Attempt to connect to primary.
+	 * Attempt to connect to follow target.
 	 *
 	 * If --wait provided, loop for up `primary_follow_timeout` seconds
 	 * before giving up
+	 *
+	 * XXX add `upstream_follow_timeout` ?
 	 */
 
 
 	for (timer = 0; timer < config_file_options.primary_follow_timeout; timer++)
 	{
 		/* --upstream-node-id provided */
-		if (primary_node_id != UNKNOWN_NODE_ID)
+		if (follow_target_node_id != UNKNOWN_NODE_ID)
 		{
-			primary_conn = establish_db_connection_quiet(primary_node_record.conninfo);
+			follow_target_conn = establish_db_connection_quiet(follow_target_node_record.conninfo);
 		}
 		else
 		{
-			primary_conn = get_primary_connection_quiet(local_conn,
-														&primary_node_id,
-														NULL);
+			follow_target_conn = get_primary_connection_quiet(local_conn,
+															  &follow_target_node_id,
+															  NULL);
 		}
 
 		if (PQstatus(primary_conn) == CONNECTION_OK || runtime_options.wait == false)
@@ -2282,19 +2287,29 @@ do_standby_follow(void)
 
 	if (PQstatus(primary_conn) != CONNECTION_OK)
 	{
-		if (primary_node_id == UNKNOWN_NODE_ID)
+		if (follow_target_node_id == UNKNOWN_NODE_ID)
 		{
 			log_error(_("unable to find a primary node"));
 		}
 		else
 		{
-			log_error(_("unable to connect to primary node %i"), primary_node_id);
+			log_error(_("unable to connect to target node %i"), follow_target_node_id);
 		}
 
 		if (runtime_options.wait == true)
 		{
-			log_detail(_("no primary appeared after %i seconds"),
-					   config_file_options.primary_follow_timeout);
+			if (follow_target_node_id == UNKNOWN_NODE_ID)
+			{
+				log_detail(_("no primary appeared after %i seconds"),
+						   config_file_options.primary_follow_timeout);
+			}
+			else
+			{
+				log_detail(_("unable to connect to target node %i after %i seconds"),
+						   follow_target_node_id,
+						   config_file_options.primary_follow_timeout);
+			}
+
 			log_hint(_("alter \"primary_follow_timeout\" in \"repmgr.conf\" to change this value"));
 		}
 
@@ -2307,42 +2322,54 @@ do_standby_follow(void)
 	{
 		if (runtime_options.dry_run == true)
 		{
-			log_info(_("connected to node %i, checking for current primary"), primary_node_id);
+			log_info(_("connected to node %i, checking for current primary"), follow_target_node_id);
 		}
 		else
 		{
-			log_verbose(LOG_INFO, _("connected to node %i, checking for current primary"), primary_node_id);
+			log_verbose(LOG_INFO, _("connected to node %i, checking for current primary"), follow_target_node_id);
 		}
 
-		record_status = get_node_record(primary_conn, primary_node_id, &primary_node_record);
+		record_status = get_node_record(follow_target_conn, follow_target_node_id, &follow_target_node_record);
 
 		if (record_status != RECORD_FOUND)
 		{
-			log_error(_("unable to find record for new primarynode %i"),
-					  primary_node_id);
+			log_error(_("unable to find record for new primary node %i"),
+					  follow_target_node_id);
 			PQfinish(primary_conn);
 			exit(ERR_FOLLOW_FAIL);
 		}
 	}
 
 	/*
-	 * Populate "event_info" with info about the primary for event notifications
+	 * Populate "event_info" with info about the node to follow for event notifications
+	 *
+	 * XXX need to differentiate between primary and non-primary?
 	 */
-	event_info.node_id = primary_node_id;
-	event_info.node_name = primary_node_record.node_name;
-	event_info.conninfo_str = primary_node_record.conninfo;
+	event_info.node_id = follow_target_node_id;
+	event_info.node_name = follow_target_node_record.node_name;
+	event_info.conninfo_str = follow_target_node_record.conninfo;
 
-	if (runtime_options.dry_run == true)
+	// check whether follow target is in recovery
+
 	{
-		log_info(_("primary node is \"%s\" (ID: %i)"),
-				 primary_node_record.node_name,
-				 primary_node_id);
-	}
-	else
-	{
-		log_verbose(LOG_INFO, ("primary node is \"%s\" (ID: %i)"),
-					primary_node_record.node_name,
-					primary_node_id);
+		PQExpBufferData node_info_msg;
+
+		initPQExpBuffer(&node_info_msg);
+
+		//if (
+
+		if (runtime_options.dry_run == true)
+		{
+			log_info(_("primary node is \"%s\" (ID: %i)"),
+					 primary_node_record.node_name,
+					 follow_target_node_id);
+		}
+		else
+		{
+			log_verbose(LOG_INFO, ("primary node is \"%s\" (ID: %i)"),
+						primary_node_record.node_name,
+						follow_target_node_id);
+		}
 	}
 
 	/* if replication slots in use, check at least one free slot is available */
@@ -2353,7 +2380,7 @@ do_standby_follow(void)
 		if (free_slots < 0)
 		{
 			log_error(_("unable to determine number of free replication slots on node %i"),
-					  primary_node_id);
+					  follow_target_node_id);
 			PQfinish(primary_conn);
 			PQfinish(local_conn);
 			exit(ERR_FOLLOW_FAIL);
@@ -2361,7 +2388,7 @@ do_standby_follow(void)
 
 		if (free_slots == 0)
 		{
-			log_error(_("no free replication slots available on node %i"), primary_node_id);
+			log_error(_("no free replication slots available on node %i"), follow_target_node_id);
 			log_hint(_("consider increasing \"max_replication_slots\""));
 			PQfinish(primary_conn);
 			PQfinish(local_conn);
@@ -2370,7 +2397,7 @@ do_standby_follow(void)
 		else if (runtime_options.dry_run == true)
 		{
 			log_info(_("replication slots in use, %i free slots on node %i"),
-					 primary_node_id,
+					 follow_target_node_id,
 					 free_slots);
 		}
 
@@ -2522,7 +2549,7 @@ do_standby_follow(void)
 			if (upstream_history->end < min_recovery_location)
 			{
 				log_error(_("this node cannot attach to upstream node %i"),
-						  primary_node_id);
+						  follow_target_node_id);
 				log_detail(_("upstream server's timeline %i forked off current database system timeline %i before current recovery point %X/%X\n"),
 						   local_timeline + 1, local_timeline, format_lsn(min_recovery_location));
 				PQfinish(primary_conn);
@@ -2605,7 +2632,7 @@ do_standby_follow(void)
 		appendPQExpBuffer(&follow_output,
 						  "standby attached to upstream node \"%s\" (node ID: %i)",
 						  primary_node_record.node_name,
-						  primary_node_id);
+						  follow_target_node_id);
 	}
 	else
 	{
@@ -2613,7 +2640,7 @@ do_standby_follow(void)
 		appendPQExpBuffer(&follow_output,
 						  "standby did not attach to upstream node \"%s\" (node ID: %i) after %i seconds",
 						  primary_node_record.node_name,
-						  primary_node_id,
+						  follow_target_node_id,
 						  config_file_options.standby_follow_timeout);
 
 	}
