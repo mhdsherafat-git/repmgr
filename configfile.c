@@ -288,6 +288,9 @@ _parse_config(t_configuration_options *options, ItemList *error_list, ItemList *
 	memset(options->repmgr_bindir, 0, sizeof(options->repmgr_bindir));
 	options->replication_type = REPLICATION_TYPE_PHYSICAL;
 
+	/* For PostgreSQL 12 and later */
+	memset(options->replication_config, 0, sizeof(options->replication_config));
+
 	/*-------------
 	 * log settings
 	 *
@@ -477,6 +480,8 @@ _parse_config(t_configuration_options *options, ItemList *error_list, ItemList *
 			strncpy(options->data_directory, value, MAXPGPATH);
 		else if (strcmp(name, "config_directory") == 0)
 			strncpy(options->config_directory, value, MAXPGPATH);
+		else if (strcmp(name, "replication_config") == 0)
+			strncpy(options->replication_config, value, MAXPGPATH);
 
 		else if (strcmp(name, "replication_user") == 0)
 		{
@@ -649,7 +654,7 @@ _parse_config(t_configuration_options *options, ItemList *error_list, ItemList *
 		else if (strcmp(name, "barman_server") == 0)
 			strncpy(options->barman_server, value, MAXLEN);
 		else if (strcmp(name, "barman_config") == 0)
-			strncpy(options->barman_config, value, MAXLEN);
+			strncpy(options->barman_config, value, MAXPGPATH);
 
 		/* rsync/ssh settings */
 		else if (strcmp(name, "rsync_options") == 0)

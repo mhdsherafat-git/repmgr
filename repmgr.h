@@ -89,14 +89,20 @@
 #define DEFAULT_STANDBY_RECONNECT_TIMEOUT    60  /* seconds */
 #define DEFAULT_NODE_REJOIN_TIMEOUT          60  /* seconds */
 
-#ifndef RECOVERY_COMMAND_FILE
-#define RECOVERY_COMMAND_FILE "recovery.conf"
-#endif
-
 #ifndef TABLESPACE_MAP
 #define TABLESPACE_MAP "tablespace_map"
 #endif
 
+#ifndef RECOVERY_COMMAND_FILE
+#define RECOVERY_COMMAND_FILE "recovery.conf"
+#endif
 
+/* PostgreSQL 12 and later */
+#define REPLICATION_CONFIG_FILE "postgresql.replication.conf"
+
+#ifndef STANDBY_SIGNAL_FILE
+#define STANDBY_SIGNAL_FILE "standby.signal"
+#define RECOVERY_SIGNAL_FILE "recovery.signal"
+#endif
 
 #endif							/* _REPMGR_H_ */

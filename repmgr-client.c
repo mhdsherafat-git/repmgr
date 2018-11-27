@@ -2543,8 +2543,6 @@ copy_remote_files(char *host, char *remote_user, char *remote_path,
 		appendPQExpBuffer(&rsync_flags, "%s",
 						  " --exclude=postmaster.pid --exclude=postmaster.opts --exclude=global/pg_control");
 
-		appendPQExpBuffer(&rsync_flags, "%s",
-						  " --exclude=recovery.conf --exclude=recovery.done");
 
 		if (server_version_num >= 90400)
 		{
@@ -2556,6 +2554,18 @@ copy_remote_files(char *host, char *remote_user, char *remote_path,
 							  " --exclude=postgresql.auto.conf.tmp");
 		}
 
+		if (server_version_num >= 120000)
+		{
+			appendPQExpBuffer(&rsync_flags, "%s",
+							  " --exclude=standby.signal --exclude=recovery.signal");
+		}
+		else
+		{
+			appendPQExpBuffer(&rsync_flags, "%s",
+							  " --exclude=recovery.conf --exclude=recovery.done");
+		}
+
+
 		/* Temporary files which we don't want, if they exist */
 		appendPQExpBuffer(&rsync_flags, " --exclude=%s*",
 						  PG_TEMP_FILE_PREFIX);
@@ -2565,16 +2575,16 @@ copy_remote_files(char *host, char *remote_user, char *remote_path,
 		if (server_version_num >= 100000)
 		{
 			appendPQExpBuffer(&rsync_flags, "%s",
-							  " --exclude=pg_wal/*");
+							  " --exclude=pg_wal/* --exclude=log/*");
 		}
 		else
 		{
 			appendPQExpBuffer(&rsync_flags, "%s",
-							  " --exclude=pg_xlog/*");
+							  " --exclude=pg_xlog/* --exclude=pg_log/*");
 		}
 
 		appendPQExpBuffer(&rsync_flags, "%s",
-						  " --exclude=pg_log/* --exclude=pg_stat_tmp/*");
+						  " --exclude=pg_stat_tmp/*");
 
 		maxlen_snprintf(script, "rsync %s %s:%s/* %s",
 						rsync_flags.data, host_string, remote_path, local_path);
@@ -2960,6 +2970,10 @@ get_node_config_directory(char *config_dir_buf)
 }
 
 
+/*
+ * Copy the configured data directory into the provided buffer.
+ *
+ */
 void
 get_node_data_directory(char *data_dir_buf)
 {
@@ -2976,6 +2990,51 @@ get_node_data_directory(char *data_dir_buf)
 	if (runtime_options.data_dir[0] != '\0')
 	{
 		strncpy(data_dir_buf, runtime_options.data_dir, MAXPGPATH);
+		return;
+	}
+
+	return;
+}
+
+
+/*
+ * Get the path of the file where replication configuration is stored
+ * (PostgreSQL 12 and later) and place it into the provided buffer
+ */
+void
+get_node_replication_configuration_file(char *file_buf)
+{
+	/* return configured value */
+	if (config_file_options.replication_config[0] != '\0')
+	{
+		strncpy(file_buf, config_file_options.replication_config, MAXPGPATH);
+		return;
+	}
+
+	if (config_file_options.config_directory[0] != '\0')
+	{
+		snprintf(file_buf, MAXPGPATH,
+				 "%s/%s",
+				 config_file_options.config_directory,
+				 REPLICATION_CONFIG_FILE);
+		return;
+	}
+
+	if (config_file_options.data_directory[0] != '\0')
+	{
+		snprintf(file_buf, MAXPGPATH,
+				 "%s/%s",
+				 config_file_options.data_directory,
+				 REPLICATION_CONFIG_FILE);
+		return;
+	}
+
+	if (runtime_options.data_dir[0] != '\0')
+	{
+		snprintf(file_buf, MAXPGPATH,
+				 "%s/%s",
+				 runtime_options.data_dir,
+				 REPLICATION_CONFIG_FILE);
 		return;
 	}
 

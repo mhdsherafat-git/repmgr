@@ -74,6 +74,7 @@ typedef struct
 	char		replication_user[NAMEDATALEN];
 	char		data_directory[MAXPGPATH];
 	char		config_directory[MAXPGPATH];
+	char		replication_config[MAXPGPATH];
 	char		pg_bindir[MAXPGPATH];
 	char		repmgr_bindir[MAXPGPATH];
 	int			replication_type;
@@ -155,7 +156,7 @@ typedef struct
 	/* barman settings */
 	char		barman_host[MAXLEN];
 	char		barman_server[MAXLEN];
-	char		barman_config[MAXLEN];
+	char		barman_config[MAXPGPATH];
 
 	/* rsync/ssh settings */
 	char		rsync_options[MAXLEN];
@@ -172,7 +173,7 @@ typedef struct
 
 #define T_CONFIGURATION_OPTIONS_INITIALIZER { \
 		/* node information */ \
-		UNKNOWN_NODE_ID, "", "", "", "", "", "", "", REPLICATION_TYPE_PHYSICAL,	\
+		UNKNOWN_NODE_ID, "", "", "", "", "", "", "", "", REPLICATION_TYPE_PHYSICAL, \
 		/* log settings */ \
 		"", "", "", DEFAULT_LOG_STATUS_INTERVAL,	\
 		/* standby clone settings */ \

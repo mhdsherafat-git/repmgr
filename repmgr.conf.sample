@@ -42,7 +42,6 @@
 
 
 # =============================================================================
-
 # Optional configuration items
 # =============================================================================
 
@@ -54,6 +53,14 @@
 #config_directory=''		 # If configuration files are located outside the data
 				 # directory, specify the directory where the main
 				 # postgresql.conf file is located.
+#replication_config=''		 # For PostgreSQL 12 and later, the path to a configuration file
+                                 # where repmgr can write replication settings (in PostgreSQL 11
+                                 # and earlier this is not applicable, as the configuration is
+                                 # always written to $PGDATA/recovery.conf).
+                                 # XXX add note about fallback defaults if not specified XXX
+                                 # NOTE: you *MUST* ensure this file is included from the main
+                                 # PostgreSQL configuration file; see XXX documentation for
+                                 # details on how to do this.
 
 #------------------------------------------------------------------------------
 # Replication settings

@@ -95,8 +95,10 @@ static void get_barman_property(char *dst, char *name, char *local_repmgr_direct
 static int	get_tablespace_data_barman(char *, TablespaceDataList *);
 static char *make_barman_ssh_command(char *buf);
 
+static bool configure_replication(t_node_info *node_record, t_conninfo_param_list *recovery_conninfo);
 static bool create_recovery_file(t_node_info *node_record, t_conninfo_param_list *recovery_conninfo, char *dest, bool as_file);
 static void write_primary_conninfo(PQExpBufferData *dest, t_conninfo_param_list *param_list);
+static void write_replication_configuration(t_node_info *node_record, t_conninfo_param_list *recovery_conninfo, PQExpBufferData *buf);
 
 static NodeStatus parse_node_status_is_shutdown_cleanly(const char *node_status_output, XLogRecPtr *checkPoint);
 static CheckStatus parse_node_check_archiver(const char *node_check_output, int *files, int *threshold);
@@ -126,6 +128,7 @@ do_standby_clone(void)
 {
 	PQExpBufferData event_details;
 	int			r = 0;
+	int			server_version_num = UNKNOWN_SERVER_VERSION_NUM;
 
 	/* dummy node record */
 	t_node_info local_node_record = T_NODE_INFO_INITIALIZER;
@@ -140,7 +143,8 @@ do_standby_clone(void)
 
 	/*
 	 * conninfo params for the actual upstream node (which might be different
-	 * to the node we're cloning from) to write to recovery.conf
+	 * to the node we're cloning from) to use for replication configuration
+	 * (PostgreSQL 11 and earlier: to write to recovery.conf)
 	 */
 
 	mode = get_standby_clone_mode();
@@ -190,7 +194,7 @@ do_standby_clone(void)
 
 	/*
 	 * Initialise list of conninfo parameters which will later be used to
-	 * create the `primary_conninfo` string in recovery.conf .
+	 * create the "primary_conninfo" configuration parameter.
 	 *
 	 * We'll initialise it with the host settings specified on the command
 	 * line. As it's possible the standby will be cloned from a node different
@@ -639,17 +643,35 @@ do_standby_clone(void)
 			copy_configuration_files(false);
 	}
 
-	/* Write the recovery.conf file */
+	/*
+	 * Get the version number from PG_VERSION - when cloning from Barman it's possible
+	 * we never had a PGconn to extract the version number, but in all cases we'll have
+	 * PG_VERSION.
+	 */
 
-	if (create_recovery_file(&local_node_record, &recovery_conninfo, local_data_directory, true) == false)
+	server_version_num = get_pg_version(local_data_directory, NULL);
+
+	if (server_version_num >= 120000)
 	{
-		/* create_recovery_file() will log an error */
-		log_notice(_("unable to create recovery.conf; see preceding error messages"));
-		log_hint(_("data directory (\"%s\") may need to be cleaned up manually"),
-				 local_data_directory);
+		if (configure_replication(&local_node_record, &recovery_conninfo) == false)
+		{
+			// XXX raise error
+		}
+	}
+	else
+	{
+		/* Write the recovery.conf file (PostgreSQL 11 and earlier) */
 
-		PQfinish(source_conn);
-		exit(ERR_BAD_CONFIG);
+		if (create_recovery_file(&local_node_record, &recovery_conninfo, local_data_directory, true) == false)
+		{
+			/* create_recovery_file() will log an error */
+			log_notice(_("unable to create recovery.conf; see preceding error messages"));
+			log_hint(_("data directory (\"%s\") may need to be cleaned up manually"),
+					 local_data_directory);
+
+			PQfinish(source_conn);
+			exit(ERR_BAD_CONFIG);
+		}
 	}
 
 	switch (mode)
@@ -1367,10 +1389,10 @@ do_standby_register(void)
 
 	/*
 	 * Verify that standby and primary are supported and compatible server
-	 * versions
+	 * versions.
 	 *
 	 * If the user is registering an inactive standby, we'll trust they know
-	 * what they're doing
+	 * what they're doing.
 	 */
 	if (PQstatus(conn) == CONNECTION_OK)
 	{
@@ -6390,12 +6412,134 @@ check_recovery_type(PGconn *conn)
 }
 
 
+/*
+ * Configure replication settings (PostgreSQL 12 and later)
+ *
+ * From Pg12, repmgr will need to be able to write the settings previously
+ * stored in a predictable location ("$PG_DATA/recovery.conf") to a PostgreSQL
+ * configuration file.
+ *
+ * Unfortunately, particularly when configuring a dormant node (e.g. following
+ * a "standby clone" operation) we can't really be sure where the configuration
+ * files are, moreover we don't want to be blundering about trying to modify
+ * them ourselves, as that will end in a world of hurt.
+ *
+ * Instead, we require a dedicated file for exclusive use by repmgr, and rely
+ * on the user to include this from the main configuration file in a way that
+ * suits them.
+ *
+ * This file can be specified with "replication_config"; if not specified,
+ * repmgr will fall back to "$config_directory/postgresql.replication.conf"
+ * or "$PGDATA/postgresql.replication.conf".
+ *
+ * If, for whatever reason, the generated file is not included in the configuration,
+ * the standby will start but not connect to anything (XXX check this); the situation
+ * can be rectified by fixing the configuration and restarting the server.
+ *
+ * If the generated file is not included, and/or the PostgreSQL configuration contains
+ * replication settings which supersede the intended replication settings,
+ * $unexpected_stuff may happen, but there's nothing we can do about that.
+ *
+ * XXX We should also add a "repmgr standby check" command to verify the replication
+ * configuration has been included and the settings originate from that file, not
+ * somewhere else.
+ */
+
+bool
+configure_replication(t_node_info *node_record, t_conninfo_param_list *recovery_conninfo)
+{
+	PQExpBufferData replication_config_buf;
+	char	    replication_config_file_path[MAXPGPATH] = "";
+	char	    standby_signal_file_path[MAXPGPATH] = "";
+	FILE	   *file;
+	mode_t		um;
+
+	get_node_replication_configuration_file(replication_config_file_path);
+
+	/* create file in buffer */
+	initPQExpBuffer(&replication_config_buf);
+
+	appendPQExpBuffer(&replication_config_buf,
+					  "# File generated by repmgr %s\n\n",
+					  REPMGR_VERSION);
+
+	/* write configuration file */
+	write_replication_configuration(node_record, recovery_conninfo, &replication_config_buf);
+
+	log_debug("configure_replication(): creating \"%s\"...",
+			  replication_config_file_path);
+
+	/* Set umask to 0600 */
+	um = umask((~(S_IRUSR | S_IWUSR)) & (S_IRWXG | S_IRWXO));
+	file = fopen(replication_config_file_path, "w");
+	umask(um);
+
+	if (file  == NULL)
+	{
+		log_error(_("unable to create replication configuration file at \"%s\""),
+				  replication_config_file_path);
+		log_detail("%s", strerror(errno));
+
+		return false;
+	}
+
+	log_debug("replication configuration is:\n%s", replication_config_buf.data);
+
+	if (fputs(replication_config_buf.data, file) == EOF)
+	{
+		log_error(_("unable to write to replication configuration file at \"%s\""),
+				  replication_config_file_path);
+		fclose(file);
+		termPQExpBuffer(&replication_config_buf);
+		return false;
+	}
+
+	fclose(file);
+
+	termPQExpBuffer(&replication_config_buf);
+
+	/* create standby.signal */
+
+	snprintf(standby_signal_file_path, MAXPGPATH,
+			 "%s/%s",
+			 local_data_directory,
+			 STANDBY_SIGNAL_FILE);
+
+	/* Set umask to 0600 */
+	um = umask((~(S_IRUSR | S_IWUSR)) & (S_IRWXG | S_IRWXO));
+	file = fopen(standby_signal_file_path, "w");
+	umask(um);
+
+	if (file  == NULL)
+	{
+		log_error(_("unable to create %s file at \"%s\""),
+				  STANDBY_SIGNAL_FILE,
+				  standby_signal_file_path);
+		log_detail("%s", strerror(errno));
+
+		return false;
+	}
+
+	if (fputs("# foo", file) == EOF)
+	{
+		log_error(_("unable to write to %s file at \"%s\""),
+				  STANDBY_SIGNAL_FILE,
+				  replication_config_file_path);
+		fclose(file);
+
+		return false;
+	}
+
+	fclose(file);
+
+	return true;
+}
 
 /*
- * Creates a recovery.conf file for a standby
+ * Creates a recovery.conf file for a standby (PostgreSQL 11 and earlier)
  *
  * A database connection pointer is required for escaping primary_conninfo
- * parameters. When cloning from Barman and --no-upstream-connection ) this
+ * parameters. When cloning from Barman ( and --no-upstream-connection) this
  * might not be available.
  */
 bool
@@ -6409,79 +6553,11 @@ create_recovery_file(t_node_info *node_record, t_conninfo_param_list *recovery_c
 	/* create file in buffer */
 	initPQExpBuffer(&recovery_file_buf);
 
-	/* standby_mode = 'on' */
+	/* standby_mode = 'on' (PostgreSQL 11 and earlier) */
 	appendPQExpBufferStr(&recovery_file_buf,
 						 "standby_mode = 'on'\n");
 
-	/* primary_conninfo = '...' */
-
-	/*
-	 * the user specified --upstream-conninfo string - copy that
-	 */
-	if (strlen(runtime_options.upstream_conninfo))
-	{
-		char	   *escaped = escape_recovery_conf_value(runtime_options.upstream_conninfo);
-
-		appendPQExpBuffer(&recovery_file_buf,
-						  "primary_conninfo = '%s'\n",
-						  escaped);
-
-		free(escaped);
-	}
-
-	/*
-	 * otherwise use the conninfo inferred from the upstream connection and/or
-	 * node record
-	 */
-	else
-	{
-		write_primary_conninfo(&recovery_file_buf, recovery_conninfo);
-	}
-
-	/* recovery_target_timeline = 'latest' */
-	appendPQExpBufferStr(&recovery_file_buf,
-						 "recovery_target_timeline = 'latest'\n");
-
-
-	/* recovery_min_apply_delay = ... (optional) */
-	if (config_file_options.recovery_min_apply_delay_provided == true)
-	{
-		appendPQExpBuffer(&recovery_file_buf,
-						  "recovery_min_apply_delay = %s\n",
-						  config_file_options.recovery_min_apply_delay);
-	}
-
-	/* primary_slot_name = '...' (optional, for 9.4 and later) */
-	if (config_file_options.use_replication_slots)
-	{
-		appendPQExpBuffer(&recovery_file_buf,
-						  "primary_slot_name = %s\n",
-						  node_record->slot_name);
-	}
-
-	/*
-	 * If restore_command is set, we use it as restore_command in
-	 * recovery.conf
-	 */
-	if (config_file_options.restore_command[0] != '\0')
-	{
-		char	   *escaped = escape_recovery_conf_value(config_file_options.restore_command);
-
-		appendPQExpBuffer(&recovery_file_buf,
-						  "restore_command = '%s'\n",
-						  escaped);
-		free(escaped);
-	}
-
-	/* archive_cleanup_command (optional) */
-	if (config_file_options.archive_cleanup_command[0] != '\0')
-	{
-		char	   *escaped = escape_recovery_conf_value(config_file_options.archive_cleanup_command);
-		appendPQExpBuffer(&recovery_file_buf,
-						  "archive_cleanup_command = '%s'\n",
-						  escaped);
-		free(escaped);
-	}
+	write_replication_configuration(node_record, recovery_conninfo, &recovery_file_buf);
 
 	if (as_file == true)
 	{
@@ -6525,6 +6601,82 @@ create_recovery_file(t_node_info *node_record, t_conninfo_param_list *recovery_c
 	return true;
 }
 
+
+static void
+write_replication_configuration(t_node_info *node_record, t_conninfo_param_list *recovery_conninfo, PQExpBufferData *buf)
+{
+
+	/* primary_conninfo = '...' */
+
+	/*
+	 * the user specified --upstream-conninfo string - copy that
+	 */
+	if (strlen(runtime_options.upstream_conninfo))
+	{
+		char	   *escaped = escape_recovery_conf_value(runtime_options.upstream_conninfo);
+
+		appendPQExpBuffer(buf,
+						  "primary_conninfo = '%s'\n",
+						  escaped);
+
+		free(escaped);
+	}
+
+	/*
+	 * otherwise use the conninfo inferred from the upstream connection and/or
+	 * node record
+	 */
+	else
+	{
+		write_primary_conninfo(buf, recovery_conninfo);
+	}
+
+	/* recovery_target_timeline = 'latest' */
+	appendPQExpBufferStr(buf,
+						 "recovery_target_timeline = 'latest'\n");
+
+
+	/* recovery_min_apply_delay = ... (optional) */
+	if (config_file_options.recovery_min_apply_delay_provided == true)
+	{
+		appendPQExpBuffer(buf,
+						  "recovery_min_apply_delay = %s\n",
+						  config_file_options.recovery_min_apply_delay);
+	}
+
+	/* primary_slot_name = '...' (optional, for 9.4 and later) */
+	if (config_file_options.use_replication_slots)
+	{
+		appendPQExpBuffer(buf,
+						  "primary_slot_name = %s\n",
+						  node_record->slot_name);
+	}
+
+	/*
+	 * If restore_command is set, we use it as restore_command in
+	 * recovery.conf
+	 */
+	if (config_file_options.restore_command[0] != '\0')
+	{
+		char	   *escaped = escape_recovery_conf_value(config_file_options.restore_command);
+
+		appendPQExpBuffer(buf,
+						  "restore_command = '%s'\n",
+						  escaped);
+		free(escaped);
+	}
+
+	/* archive_cleanup_command (optional) */
+	if (config_file_options.archive_cleanup_command[0] != '\0')
+	{
+		char	   *escaped = escape_recovery_conf_value(config_file_options.archive_cleanup_command);
+		appendPQExpBuffer(buf,
+						  "archive_cleanup_command = '%s'\n",
+						  escaped);
+		free(escaped);
+	}
+
+}
 
 static void
 write_primary_conninfo(PQExpBufferData *dest, t_conninfo_param_list *param_list)
