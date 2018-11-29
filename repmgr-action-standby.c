@@ -2623,9 +2623,9 @@ do_standby_follow(void)
 		 * We'll try and establish primary from follow target, in the assumption its node
 		 * record is more up-to-date.
 		 */
-		primary_conn = follow_target_conn = get_primary_connection_quiet(follow_target_conn,
-																		  &primary_node_id,
-																		  NULL);
+		primary_conn = get_primary_connection_quiet(follow_target_conn,
+													&primary_node_id,
+													NULL);
 	}
 	else
 	{
@@ -2721,12 +2721,12 @@ do_standby_follow(void)
 		follow_output.data,
 		&event_info);
 
+	termPQExpBuffer(&follow_output);
+
 	PQfinish(follow_target_conn);
 
 	if (follow_target_is_primary == false)
 		PQfinish(primary_conn);
-
-	termPQExpBuffer(&follow_output);
 
 	if (success == false)
 		exit(ERR_FOLLOW_FAIL);
