@@ -2999,46 +2999,39 @@ get_node_data_directory(char *data_dir_buf)
 
 /*
  * Get the path of the file where replication configuration is stored
- * (PostgreSQL 12 and later) and place it into the provided buffer
+ * (PostgreSQL 12 and later) and place it into the provided buffer of
+ * MAXPGPATH length.
+ *
+ * If "replication_config" is not set, return "true" to indicate the destination
+ * file will be "postgresql.auto.conf", which we will need to append to, other
+ * wise return "true" to indicate the provided file can be overwritten.
  */
-void
+bool
 get_node_replication_configuration_file(char *file_buf)
 {
 	/* return configured value */
 	if (config_file_options.replication_config[0] != '\0')
 	{
 		strncpy(file_buf, config_file_options.replication_config, MAXPGPATH);
-		return;
+		return false;
 	}
 
-	if (config_file_options.config_directory[0] != '\0')
-	{
-		snprintf(file_buf, MAXPGPATH,
-				 "%s/%s",
-				 config_file_options.config_directory,
-				 REPLICATION_CONFIG_FILE);
-		return;
-	}
-
-	if (config_file_options.data_directory[0] != '\0')
-	{
-		snprintf(file_buf, MAXPGPATH,
-				 "%s/%s",
-				 config_file_options.data_directory,
-				 REPLICATION_CONFIG_FILE);
-		return;
-	}
 
 	if (runtime_options.data_dir[0] != '\0')
 	{
 		snprintf(file_buf, MAXPGPATH,
 				 "%s/%s",
 				 runtime_options.data_dir,
-				 REPLICATION_CONFIG_FILE);
-		return;
+				 DEFAULT_REPLICATION_CONFIG_FILE);
+		return true;
 	}
 
-	return;
+	snprintf(file_buf, MAXPGPATH,
+			 "%s/%s",
+			 config_file_options.data_directory,
+			 DEFAULT_REPLICATION_CONFIG_FILE);
+
+	return true;
 }
 
 

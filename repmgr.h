@@ -98,7 +98,7 @@
 #endif
 
 /* PostgreSQL 12 and later */
-#define REPLICATION_CONFIG_FILE "postgresql.replication.conf"
+#define DEFAULT_REPLICATION_CONFIG_FILE "postgresql.auto.conf"
 
 #ifndef STANDBY_SIGNAL_FILE
 #define STANDBY_SIGNAL_FILE "standby.signal"

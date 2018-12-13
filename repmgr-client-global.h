@@ -247,7 +247,7 @@ extern void get_server_action(t_server_action action, char *script, char *data_d
 extern bool data_dir_required_for_action(t_server_action action);
 extern void get_node_config_directory(char *config_dir_buf);
 extern void get_node_data_directory(char *data_dir_buf);
-extern void get_node_replication_configuration_file(char *file_buf);
+extern bool get_node_replication_configuration_file(char *file_buf);
 extern void init_node_record(t_node_info *node_record);
 extern bool can_use_pg_rewind(PGconn *conn, const char *data_directory, PQExpBufferData *reason);
 extern void drop_replication_slot_if_exists(PGconn *conn, int node_id, char *slot_name);
